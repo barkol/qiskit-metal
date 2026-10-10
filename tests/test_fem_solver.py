@@ -127,3 +127,27 @@ class TestMaxwellFEM(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+@unittest.skipUnless(_fem_available(), "gmsh and scikit-fem not installed")
+class TestMeshReproducible(unittest.TestCase):
+    """mesh_package(threads=1) gives identical meshes (MPK: fem_mesh_reproducibility)."""
+
+    def test_single_thread_is_deterministic(self):
+        from qiskit_metal.analyses.fem import Package, mesh_package
+
+        def rect(x0, y0, w, h):
+            return np.array([(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h)])
+
+        pkg = Package(
+            4.0,
+            4.0,
+            3.0,
+            0.5,
+            11.45,
+            {"pad_a": rect(1.5, 1.4, 1.0, 0.5), "pad_b": rect(1.5, 2.1, 1.0, 0.5)},
+            {"Q": ((2.0, 1.9), (2.0, 2.1))},
+        )
+        meshes = [mesh_package(pkg, h_metal=0.05, h_max=0.8, threads=1) for _ in range(2)]
+        np.testing.assert_array_equal(meshes[0].p, meshes[1].p)
+        np.testing.assert_array_equal(meshes[0].t, meshes[1].t)

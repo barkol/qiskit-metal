@@ -226,6 +226,7 @@ def mesh_package(
     pads=True,
     substrate=True,
     verbose=False,
+    threads=None,
 ):
     """Mesh the package with gmsh.
 
@@ -245,6 +246,12 @@ def mesh_package(
         probe: optional (x, y) of a vertical wire port from floor to lid.
         pads: set False to leave the paddles (and junctions) out.
         substrate: set False to leave the silicon out (empty box).
+        threads: number of meshing threads. ``None`` (default) uses all
+            cores; the parallel 3D mesher (HXT) is then not deterministic,
+            so meshing the same package twice gives slightly different
+            meshes and results (of the order of the discretization error).
+            ``threads=1`` gives identical meshes for identical input, for
+            convergence studies and tests, at the cost of meshing time.
     """
     import gmsh
 
@@ -362,7 +369,10 @@ def mesh_package(
         "Mesh.LcIntegrationPrecision", 1e-3
     )  # the default 1e-9 makes 1D meshing crawl
     gmsh.option.setNumber("Mesh.Algorithm3D", 10)  # HXT: fast, parallel
-    gmsh.option.setNumber("General.NumThreads", 0)
+    n_threads = 0 if threads is None else int(threads)  # 0: all cores
+    gmsh.option.setNumber("General.NumThreads", n_threads)
+    for dim in (1, 2, 3):
+        gmsh.option.setNumber(f"Mesh.MaxNumThreads{dim}D", n_threads)
     start = time.time()
     gmsh.model.mesh.generate(3)
     mesh_time = time.time() - start
