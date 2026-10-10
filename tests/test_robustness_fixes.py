@@ -229,3 +229,30 @@ class TestQGeometryNamesAreStrings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestImportKeepsWarnings(unittest.TestCase):
+    """import qiskit_metal does not route all Python warnings into logging
+    (#1229)."""
+
+    def test_warning_after_import_reaches_stderr(self):
+        code = (
+            "import logging, warnings\n"
+            "warnings.simplefilter('always')\n"
+            "import qiskit_metal\n"
+            "from qiskit_metal import designs\n"
+            "designs.DesignPlanar(); designs.DesignPlanar()\n"
+            "assert logging._warnings_showwarning is None\n"
+            "warnings.warn('after-import-warning')\n"
+        )
+        env = dict(os.environ, QISKIT_METAL_HEADLESS="1")
+        proc = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=300
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("after-import-warning", proc.stderr)
+        # a renderer skipped for a missing dependency is reported once, not per design
+        for line in set(proc.stderr.splitlines()):
+            if "skipped: runtime dependency" in line:
+                key = line.split("Renderer=")[1].split()[0]
+                self.assertEqual(proc.stderr.count(f"Renderer={key} skipped"), 1)

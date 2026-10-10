@@ -133,8 +133,10 @@ def setup_qt_backend():
 from qiskit_metal import config
 from qiskit_metal.toolbox_python._logging import setup_logger
 
+# capture_warnings is left alone: logging.captureWarnings is process-global
+# and would hide every warnings.warn of other libraries and user code.
 logger = setup_logger(
-    "metal", config.log.format, config.log.datefmt, capture_warnings=True
+    "metal", config.log.format, config.log.datefmt, capture_warnings=None
 )  # type: logging.Logger
 del setup_logger
 

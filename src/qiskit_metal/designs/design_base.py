@@ -38,6 +38,10 @@ __all__ = ["QDesign"]
 #:ivar var1: initial value: par2
 
 
+# renderer keys whose "skipped" message was already logged at INFO
+_REPORTED_SKIPPED_RENDERERS: set[str] = set()
+
+
 class QDesign:
     """Base class for all Qiskit Metal designs.
 
@@ -1043,7 +1047,15 @@ class QDesign:
                     # actual heavy dep (pyEPR / pyaedt / gmsh) isn't
                     # installed. Same outcome as a missing module:
                     # skip + log + keep going.
-                    self.logger.info(
+                    # once per process at INFO, then DEBUG: every new
+                    # design would otherwise repeat the same lines
+                    log = (
+                        self.logger.debug
+                        if renderer_key in _REPORTED_SKIPPED_RENDERERS
+                        else self.logger.info
+                    )
+                    _REPORTED_SKIPPED_RENDERERS.add(renderer_key)
+                    log(
                         f"Renderer={renderer_key} skipped: "
                         f"runtime dependency not installed ({e})."
                     )
