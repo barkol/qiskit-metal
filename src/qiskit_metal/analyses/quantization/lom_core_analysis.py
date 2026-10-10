@@ -1550,6 +1550,14 @@ class CompositeSystem:
 
         Note that the computed g's are in MHz
 
+        Each g is the coefficient of the product of the two subsystems'
+        default charge operators in the Hamiltonian: the Cooper-pair number
+        ``n`` of a transmon (with ``Q_zpf = 2e``) and ``i(a^dag - a)`` of a
+        resonator. It is not the ``g01`` of the Jaynes-Cummings/dispersive
+        formulas: multiply by ``|<0|n|1>|`` of each transmon involved, e.g.
+        ``abs(transmon.quantum_system.matrixelement_table("n_operator",
+        evals_count=2)[0, 1])`` (about 1.1 for E_J/E_C ~ 50).
+
         Note: the resulting matrix is in the basis of nodes_keep, which may not be in the same order of
         subsystems
         """
@@ -1661,14 +1669,20 @@ class CompositeSystem:
             hilbertspace (scq.HilbertSpace): Hilbertspace object for the Hamiltonian
                 of the composite system
             evals_count (int, optional): Number of eigenenergy levels to keep
-                after diagonalizing the Hamiltonian. Defaults to 10.
+                after diagonalizing the Hamiltonian. Defaults to None, all
+                levels; a value larger than the Hilbert-space dimension is
+                reduced to it.
             print_info (bool, optional): If true, print results as well. Defaults to True.
 
         Returns:
             dict: ``{"fQ_in_Ghz": {name: f01 in GHz}, "chi_in_MHz":
             LabeledNdarray}`` -- the dressed transition frequencies of each
-            subsystem and the chi matrix (diagonal: anharmonicities,
-            off-diagonal: cross-Kerr), in MHz.
+            subsystem and the chi matrix, in MHz. Diagonal: anharmonicities.
+            Off-diagonal: the cross-Kerr ``E11 - E10 - E01 + E00`` of the
+            dressed levels, i.e. the static ZZ rate for two qubits and, for a
+            qubit and a resonator, the full shift of the resonator frequency
+            when the qubit is excited (``2 chi`` in the ``chi a^dag a
+            sigma_z`` convention of Koch et al., ``chi`` in that of pyEPR).
         """
         ham_res = {}
 
@@ -1676,6 +1690,8 @@ class CompositeSystem:
 
         if evals_count is None:
             evals_count = hilbertspace.dimension
+        else:
+            evals_count = min(int(evals_count), hilbertspace.dimension)
 
         hamiltonian_mat = hilbertspace.hamiltonian()
         evals, evecs = hamiltonian_mat.eigenstates(eigvals=evals_count)

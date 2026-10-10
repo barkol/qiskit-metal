@@ -300,3 +300,34 @@ class TestTLResonatorTwoNodeSign(unittest.TestCase):
         # (both paths); with the same Q_zpf sign at both ends Metal gave 2.01
         self.assertGreater(j_direct, 2.5)
         self.assertGreater(j_total, j_direct + 0.2)
+
+
+class TestEvalsCountClamp(unittest.TestCase):
+    """hamiltonian_results(evals_count=30), as the tutorials call it, works
+    on a Hilbert space smaller than 30 (MPK: tut_405_lom_chi_g_naming)."""
+
+    def test_single_transmon(self):
+        names = ["pad_top", "pad_bot", "ground_plane"]
+        cmat = np.array(
+            [[100.0, -30.0, -70.0], [-30.0, 100.0, -70.0], [-70.0, -70.0, 140.0]]
+        )
+        cell = Cell(
+            dict(
+                node_rename={},
+                cap_mat=pd.DataFrame(cmat, index=names, columns=names),
+                ind_dict={("pad_top", "pad_bot"): _LJ_NH},
+                jj_dict={("pad_top", "pad_bot"): "j1"},
+                cj_dict={("pad_top", "pad_bot"): 2},
+            )
+        )
+        qubit = Subsystem(
+            name="q", sys_type="TRANSMON", nodes=["j1"], q_opts=dict(truncated_dim=10)
+        )
+        system = CompositeSystem(
+            subsystems=[qubit], cells=[cell], grd_node="ground_plane"
+        )
+        space = system.create_hilbertspace()
+        self.assertLess(space.dimension, 30)
+        res30 = system.hamiltonian_results(space, evals_count=30, print_info=False)
+        res_all = system.hamiltonian_results(space, print_info=False)
+        self.assertAlmostEqual(res30["fQ_in_Ghz"]["q"], res_all["fQ_in_Ghz"]["q"])
