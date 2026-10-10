@@ -232,12 +232,15 @@ class RouteMeander(QRoute):
         # length to distribute on the meanders (excess w.r.t a straight line between start and end)
         length_excess = length_meander - length_direct - 2 * abs(asymmetry)
         if length_excess < 0:
+            # Nothing is left for a meander: say so (the drawn length is
+            # reported after adjust_length in make()).
             min_length = self.p.total_length - length_excess
-            raise ValueError(
-                f"{self.name}: total_length={self.p.total_length:.6g} mm is shorter "
-                f"than the minimum route length {min_length:.6g} mm between "
-                f"{self.name}.start and {self.name}.end (leads, the direct "
-                f"distance and 2*|meander.asymmetry|). Increase total_length or "
+            self.logger.warning(
+                f"{self.name}: total_length={self.p.total_length:.6g} mm leaves no "
+                f"length for a meander: the leads, the direct distance and "
+                f"2*|meander.asymmetry| between {self.name}.start and "
+                f"{self.name}.end take about {min_length:.6g} mm (minimum route "
+                "length before fillet corrections). Increase total_length or "
                 "shorten the leads."
             )
         # how much meander offset from center-line is needed to accommodate the length_excess (perpendicular length)

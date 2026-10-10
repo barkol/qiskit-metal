@@ -437,6 +437,9 @@ class TestMeanderLengthReporting(unittest.TestCase):
             any("differs from total_length" in r.getMessage() for r in records)
         )
 
-    def test_too_short_raises(self):
-        with self.assertRaisesRegex(ValueError, "minimum route length"):
-            self._build("1.0mm", "50um", "150um")
+    def test_too_short_warns_instead_of_crashing(self):
+        with self.assertLogs("metal", level="WARNING") as logs:
+            route = self._build("1.0mm", "50um", "150um")
+        self.assertTrue(any("minimum route length" in m for m in logs.output))
+        self.assertTrue(any("differs from total_length" in m for m in logs.output))
+        self.assertEqual(route.status, "good")
