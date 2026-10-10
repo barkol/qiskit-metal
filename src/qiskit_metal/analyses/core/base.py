@@ -90,7 +90,9 @@ class QAnalysis(ABC):
 
     def run_sweep(self, *args, **kwargs):
         """User requests sweeper based on arguments from
-        Sweeper.run_sweep().
+        Sweeper.run_sweep(). Returns ``(all_sweep, return_code)``; the code
+        is 0 when every run() succeeded and 7 when run() raised for at least
+        one value (see :meth:`Sweeper.run_sweep` for all codes).
         """
         if not self._sweeper:
             self._initialize_sweep()

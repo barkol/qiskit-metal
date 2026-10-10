@@ -71,6 +71,9 @@ class Sweeper:
             * 4 option_sweep is empty, need at least one entry.
             * 5 last key in option_name is not in Dict.
             * 6 need to have at least three arguments
+            * 7 run() raised for at least one value; the entry of each
+              failed value holds ``option_name`` and ``error`` (the
+              message) instead of solution data.
         """
         # Dict of all swept information.
         all_sweep = Dict()
@@ -153,8 +156,11 @@ class Sweeper:
 
                 * 0 Have list of capacitance matrix.
                 * 5 last key in option_name is not in Dict.
+                * 7 run() raised for at least one value; the entry of each
+                  failed value holds ``option_name`` and ``error``.
         """
 
+        failed = []
         for _, item in enumerate(args[2]):
             # Last item in list.
             if option_path[-1] in a_value.keys():
@@ -175,9 +181,19 @@ class Sweeper:
                     f"option_name={'.'.join(option_path)}, key={item}, "
                     f"run() did not execute as expected: {message}"
                 )
+                failed.append(item)
+                all_sweep[item] = Dict(option_name=args[1], error=message)
+                continue
 
             self.populate_all_sweep(all_sweep, item, args[1])
 
+        if failed:
+            self.design.logger.warning(
+                f"For class {self.parent.__class__.__name__}, run() failed for "
+                f"{len(failed)} of {len(args[2])} values of "
+                f"{'.'.join(option_path)}: {failed}. Returning code 7."
+            )
+            return all_sweep, 7
         return all_sweep, 0
 
     # #######  Populate all_sweep

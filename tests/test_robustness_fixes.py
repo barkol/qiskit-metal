@@ -256,3 +256,46 @@ class TestImportKeepsWarnings(unittest.TestCase):
             if "skipped: runtime dependency" in line:
                 key = line.split("Renderer=")[1].split()[0]
                 self.assertEqual(proc.stderr.count(f"Renderer={key} skipped"), 1)
+
+
+class TestRunSweepFailure(unittest.TestCase):
+    """run_sweep returns code 7 and records the error when run() fails
+    (#1230)."""
+
+    def _sweep(self, fail_on):
+        from qiskit_metal import Dict, designs
+        from qiskit_metal.analyses.sweep_and_optimize.sweeper import Sweeper
+        from qiskit_metal.qlibrary.qubits.transmon_pocket import TransmonPocket
+
+        design = designs.DesignPlanar()
+        TransmonPocket(design, "Q1")
+
+        class _Parent:
+            def __init__(self):
+                self.design = design
+                self.setup = Dict(run=None)
+                self._variables = Dict()
+
+            def run(self, **kwargs):
+                gap = design.components["Q1"].options.pad_gap
+                if gap in fail_on:
+                    raise RuntimeError(f"no solver for {gap}")
+                self._variables = Dict(result=gap)
+
+        return Sweeper(_Parent()).run_sweep("Q1", "pad_gap", ["20um", "30um"], ["Q1"], [])
+
+    def test_all_fail(self):
+        sweep, code = self._sweep({"20um", "30um"})
+        self.assertEqual(code, 7)
+        self.assertIn("no solver for 20um", sweep["20um"]["error"])
+
+    def test_some_fail(self):
+        sweep, code = self._sweep({"30um"})
+        self.assertEqual(code, 7)
+        self.assertEqual(sweep["20um"]["variables"]["result"], "20um")
+        self.assertIn("error", sweep["30um"])
+
+    def test_none_fail(self):
+        sweep, code = self._sweep(set())
+        self.assertEqual(code, 0)
+        self.assertNotIn("error", sweep["30um"])
