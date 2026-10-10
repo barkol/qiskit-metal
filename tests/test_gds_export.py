@@ -571,3 +571,41 @@ class TestGDSDefaultJunctionFile(unittest.TestCase):
             finally:
                 os.chdir(old)
         self.assertIn("FakeJunction_01", cells)
+
+
+class TestReadoutResFCLayer(unittest.TestCase):
+    """ReadoutResFC etches its CPW gap on the layer of its trace (#1224)."""
+
+    def test_trace_and_etch_on_one_layer(self):
+        from collections import Counter
+
+        from qiskit_metal.designs import DesignFlipChip
+        from qiskit_metal.qlibrary.resonators.readoutres_fc import ReadoutResFC
+
+        design = DesignFlipChip()
+        design.overwrite_enabled = True
+        ReadoutResFC(design, "R1", options=dict(chip="C_chip"))
+        poly = design.qgeometry.tables["poly"]
+        self.assertEqual(set(poly["layer"]), {1})
+        self.assertTrue(poly["subtract"].any())
+
+        gds = design.renderers.gds
+        off = {"C_chip": {1: False}, "Q_chip": {1: False}}
+        gds.options.cheese.view_in_file = off
+        gds.options.no_cheese.view_in_file = off
+        with tempfile.TemporaryDirectory() as tmp:
+            fn = os.path.join(tmp, "fc.gds")
+            gds.export_to_gds(fn)
+            top = gdstk.read_gds(fn).top_level()[0]
+            layers = Counter(p.layer for p in top.flatten().polygons)
+        self.assertEqual(set(layers), {1})
+
+    def test_explicit_layer_subtract_kept(self):
+        from qiskit_metal.designs import DesignFlipChip
+        from qiskit_metal.qlibrary.resonators.readoutres_fc import ReadoutResFC
+
+        design = DesignFlipChip()
+        design.overwrite_enabled = True
+        ReadoutResFC(design, "R1", options=dict(chip="C_chip", layer_subtract="2"))
+        poly = design.qgeometry.tables["poly"]
+        self.assertEqual(set(poly[poly["subtract"]]["layer"]), {2})

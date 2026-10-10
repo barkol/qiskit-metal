@@ -29,6 +29,12 @@ class DesignFlipChip(QDesign):
     """Metal class for a flipchip design, consisting of two chips with their device sides facing each other.
     Typically assumed to have some CPW geometries.
 
+    The control chip ``C_chip`` has its device surface at ``z = 0`` and the
+    qubit chip ``Q_chip`` at ``center_z = "20 um"``: that default is the chip
+    gap, and should be set to the actual bump height of the stack
+    (bump-bonded stacks are typically 1-10 um apart), e.g.
+    ``design.chips["Q_chip"]["size"]["center_z"] = "8 um"``.
+
     Inherits QDesign class.
     """
 
@@ -93,7 +99,7 @@ class DesignFlipChip(QDesign):
         self._chips["Q_chip"]["size"] = Dict(
             center_x="0.0mm",
             center_y="0.0mm",
-            center_z="20 um",
+            center_z="20 um",  # chip gap; set to the actual bump height
             size_x="9mm",
             size_y="9mm",
             size_z="280um",  # chip extends in positive z direction by 280 um

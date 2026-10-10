@@ -29,6 +29,12 @@ class ReadoutResFC(QComponent):
         - Change coupling to the qubit by varying ``readout_radius``.
         - Couple to the feedthrough line via the horizontal section of length ``readout_l3``.
         - Adjust resonator frequency by varying ``readout_l5``.
+
+    Layers: the trace is drawn on ``layer`` and the CPW gap (``ro_etch``,
+    ``subtract=True``) is etched from the ground plane of ``layer_subtract``.
+    An empty ``layer_subtract`` (the default) means the same layer as the
+    trace, as for every other CPW component. ``chip`` defaults to ``main``;
+    on a ``DesignFlipChip`` pass ``chip="C_chip"`` or ``chip="Q_chip"``.
     """
 
     default_options = Dict(
@@ -46,7 +52,7 @@ class ReadoutResFC(QComponent):
         arc_step="1 um",
         orientation="0",
         layer="1",
-        layer_subtract="2",
+        layer_subtract="",
         subtract=True,
         chip="main",
         _default_connection_pads=Dict(),
@@ -180,7 +186,9 @@ class ReadoutResFC(QComponent):
             "poly",
             dict(ro_etch=ro_etch),
             chip=chip,
-            layer=p.layer_subtract,
+            layer=p.layer_subtract
+            if str(self.options.layer_subtract).strip()
+            else p.layer,
             subtract=p.subtract,
         )
 
