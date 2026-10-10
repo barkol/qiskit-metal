@@ -148,6 +148,40 @@ class TestMeshReproducible(unittest.TestCase):
             {"pad_a": rect(1.5, 1.4, 1.0, 0.5), "pad_b": rect(1.5, 2.1, 1.0, 0.5)},
             {"Q": ((2.0, 1.9), (2.0, 2.1))},
         )
-        meshes = [mesh_package(pkg, h_metal=0.05, h_max=0.8, threads=1) for _ in range(2)]
+        meshes = [
+            mesh_package(pkg, h_metal=0.05, h_max=0.8, threads=1) for _ in range(2)
+        ]
         np.testing.assert_array_equal(meshes[0].p, meshes[1].p)
         np.testing.assert_array_equal(meshes[0].t, meshes[1].t)
+
+
+class TestPackageFromDesignErrors(unittest.TestCase):
+    """package_from_design explains what is missing and warns about dropped
+    ground-plane cuts (MPK: fem_package_from_design_errors)."""
+
+    def test_messages(self):
+        import logging
+
+        import qiskit_metal as qm
+        from qiskit_metal import designs
+        from qiskit_metal.analyses.fem import package_from_design
+        from qiskit_metal.designs.design_multiplanar import MultiPlanar
+        from qiskit_metal.qlibrary.qubits.transmon_pocket import TransmonPocket
+
+        qm.logger.setLevel(logging.ERROR)
+        planar = designs.DesignPlanar()
+        TransmonPocket(planar, "Q1")
+        with self.assertRaisesRegex(TypeError, "MultiPlanar"):
+            package_from_design(planar, 11.45)
+
+        multi = MultiPlanar()
+        multi.overwrite_enabled = True
+        TransmonPocket(multi, "Q1")
+        with self.assertRaisesRegex(KeyError, "sample_holder_top"):
+            package_from_design(multi, 11.45)
+
+        multi.variables["sample_holder_top"] = "2.25mm"
+        multi.variables["sample_holder_bottom"] = "0.75mm"
+        with self.assertWarnsRegex(UserWarning, "Q1.rect_pk"):
+            package = package_from_design(multi, 11.45)
+        self.assertEqual(sorted(package.metals), ["Q1.pad_bot", "Q1.pad_top"])

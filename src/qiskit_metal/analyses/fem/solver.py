@@ -44,6 +44,7 @@ imported when used, so importing this module needs neither.
 from __future__ import annotations
 
 import time
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -78,12 +79,34 @@ def package_from_design(design, eps_r):
 
     The chip outline sets the package walls; the silicon thickness comes from
     the layer stack and the lid height from the sample-holder variables.
-    Subtracted shapes (ground-plane cuts) are ignored: this chip has no
-    ground plane.
+    Subtracted shapes (ground-plane cuts) are ignored, with a warning
+    listing them: this chip has no ground plane.
+
+    Raises:
+        TypeError: if the design has no layer stack (not a ``MultiPlanar``).
+        KeyError: if ``sample_holder_top`` or ``sample_holder_bottom`` is not
+            a design variable.
     """
 
     def mm(v):
         return float(design.parse_value(v))
+
+    if not hasattr(design, "ls"):
+        raise TypeError(
+            f"package_from_design needs a MultiPlanar design with a layer stack "
+            f"(substrate on layer 3); got {type(design).__name__}."
+        )
+    missing = [
+        k
+        for k in ("sample_holder_top", "sample_holder_bottom")
+        if k not in design.variables
+    ]
+    if missing:
+        raise KeyError(
+            f"package_from_design needs the design variables {missing} (lid "
+            "height above and floor depth below the chip surface), e.g. "
+            "design.variables['sample_holder_top'] = '2.25mm'."
+        )
 
     size = design.chips.main.size
     Lx, Ly = mm(size.size_x), mm(size.size_y)
@@ -96,7 +119,20 @@ def package_from_design(design, eps_r):
     comps = {c.id: name for name, c in design.components.items()}
     metals, junctions = {}, {}
     polys = design.qgeometry.tables["poly"]
-    for _, row in polys[~polys["subtract"].astype(bool)].iterrows():
+    subtract = polys["subtract"].astype(bool)
+    if subtract.any():
+        dropped = [
+            f"{comps[row.component]}.{row['name']}"
+            for _, row in polys[subtract].iterrows()
+        ]
+        warnings.warn(
+            "package_from_design ignores subtract=True shapes (the package model "
+            f"has no ground plane): {dropped}. A component drawn in a ground-plane "
+            "pocket is solved as floating metal only.",
+            UserWarning,
+            stacklevel=2,
+        )
+    for _, row in polys[~subtract].iterrows():
         xy = np.asarray(row.geometry.exterior.coords)[:-1] - (x0, y0)
         metals[f"{comps[row.component]}.{row['name']}"] = xy
     for _, row in design.qgeometry.tables["junction"].iterrows():
