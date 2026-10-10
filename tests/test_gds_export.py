@@ -572,6 +572,14 @@ class TestGDSDefaultJunctionFile(unittest.TestCase):
                 os.chdir(old)
         self.assertIn("FakeJunction_01", cells)
 
+    def test_printed_default_has_no_local_path(self):
+        # the default stays relative, so printed options carry no install path
+        design = designs.DesignPlanar()
+        self.assertEqual(
+            design.renderers.gds.options.path_filename,
+            "../resources/Fake_Junctions.GDS",
+        )
+
 
 class TestReadoutResFCLayer(unittest.TestCase):
     """ReadoutResFC etches its CPW gap on the layer of its trace (#1224)."""

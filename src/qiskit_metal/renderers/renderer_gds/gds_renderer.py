@@ -37,10 +37,15 @@ from qiskit_metal.renderers.renderer_gds.make_cheese import Cheesing
 from qiskit_metal.toolbox_metal.parsing import is_true
 
 #: Sample junction cells shipped with the package (``FakeJunction_01``,
-#: ``FakeJunction_02``, ``my_other_junction``); the default ``path_filename``.
+#: ``FakeJunction_02``, ``my_other_junction``).
 DEFAULT_JUNCTION_GDS = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "resources", "Fake_Junctions.GDS"
 )
+#: The default ``path_filename``. It is kept relative (the tutorials'
+#: ``docs/tut/resources`` copy) so printed options carry no local path; when
+#: it does not resolve from the working directory, the packaged
+#: :data:`DEFAULT_JUNCTION_GDS` is used instead.
+DEFAULT_PATH_FILENAME = "../resources/Fake_Junctions.GDS"
 
 if not config.is_building_docs():
     from qiskit_metal.toolbox_python.utility_functions import (
@@ -94,8 +99,9 @@ class QGDSRenderer(QRenderer):
         * tolerance: '0.00001'
         * precision: '0.000000001'
         * width_LineString: '10um'
-        * path_filename: the sample ``Fake_Junctions.GDS`` shipped in
-          ``qiskit_metal/renderers/renderer_gds/resources`` (``DEFAULT_JUNCTION_GDS``)
+        * path_filename: '../resources/Fake_Junctions.GDS' -- if this default does not
+          resolve from the working directory, the sample ``Fake_Junctions.GDS`` shipped in
+          ``qiskit_metal/renderers/renderer_gds/resources`` (``DEFAULT_JUNCTION_GDS``) is used
         * junction_pad_overlap: '5um'
         * max_points: '199'
         * fabricate: 'False'
@@ -189,10 +195,10 @@ class QGDSRenderer(QRenderer):
         # into gds Metal output without being edited. The name of the cell can
         # be placed as options for a component, i.e. placing within a qubit.
         # During export, the cell will NOT be edited, just imported.
-        # Defaults to the sample file shipped with the package
-        # (DEFAULT_JUNCTION_GDS); a relative path is resolved against the
-        # current working directory.
-        path_filename=DEFAULT_JUNCTION_GDS,
+        # A relative path is resolved against the current working
+        # directory; the default falls back to the sample file shipped with
+        # the package (DEFAULT_JUNCTION_GDS) when it does not resolve.
+        path_filename=DEFAULT_PATH_FILENAME,
         # For junction table, when cell from default_options.path_filename does
         # not fit into linestring, QGDSRender will create two pads and add to
         # junction to fill the location of lineString.  The junction_pad_overlap
@@ -1888,6 +1894,19 @@ class QGDSRenderer(QRenderer):
 
     ############
 
+    def _junction_file(self) -> str | None:
+        """Path of the junction GDS file to read, or None if there is none.
+
+        ``options.path_filename`` if it exists; otherwise, for the default
+        value, the sample file shipped with the package.
+        """
+        path = self.options.path_filename
+        if path and os.path.isfile(path):
+            return path
+        if path == DEFAULT_PATH_FILENAME and os.path.isfile(DEFAULT_JUNCTION_GDS):
+            return DEFAULT_JUNCTION_GDS
+        return None
+
     def import_junction_gds_file(
         self, lib: gdstk.Library, directory_name: str | None = None
     ) -> bool:
@@ -1920,7 +1939,8 @@ class QGDSRenderer(QRenderer):
         if self.imported_junction_gds is not None:
             return True
 
-        if not os.path.isfile(self.options.path_filename):
+        junction_file = self._junction_file()
+        if junction_file is None:
             message_str = (
                 f'Not able to find file:"{self.options.path_filename}" '
                 f'(resolved to "{os.path.abspath(self.options.path_filename)}").  '
@@ -1931,7 +1951,7 @@ class QGDSRenderer(QRenderer):
             return False
 
         # read external library (with its own unit/precision)
-        imported_lib = gdstk.read_gds(self.options.path_filename)
+        imported_lib = gdstk.read_gds(junction_file)
         imported_cells = getattr(imported_lib, "cells", None)
 
         if not imported_cells:
@@ -1971,7 +1991,7 @@ class QGDSRenderer(QRenderer):
         for cell in imported_cells:
             lib.add(cell)
 
-        self.imported_junction_gds = self.options.path_filename
+        self.imported_junction_gds = junction_file
         return True
 
     def _import_junctions_to_one_cell(
