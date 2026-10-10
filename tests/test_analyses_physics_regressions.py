@@ -478,3 +478,54 @@ class TestHcpbParamsFromSpectrum(unittest.TestCase):
         np.testing.assert_allclose(np.abs(n), np.abs(ref - np.diag(np.diag(ref))), atol=1e-12)
         self.assertAlmostEqual(h.n_ij(0, 2, signed=True) ** 2, ref[0, 2] ** 2, places=12)
         self.assertGreaterEqual(h.n_ij(0, 2), 0.0)
+
+
+def _notch_general(f, a, alpha, tau, ql, qc, fr, phi):
+    """Gao Eq. 51 at absolute frequency, the model fit_transmission documents."""
+    return (
+        a
+        * np.exp(1j * alpha)
+        * np.exp(-2j * np.pi * f * tau)
+        * (1 - (ql / qc) * np.exp(1j * phi) / (1 + 2j * ql * (f / fr - 1)))
+    )
+
+
+class TestFitTransmissionConsistent(unittest.TestCase):
+    """The returned parameters reproduce the data with the documented model,
+    and the end-point magnitude detrend no longer biases Q (follow-up to
+    #1209)."""
+
+    qc, qi, fr = 7000.0, 2e5, 7e9
+
+    def test_returned_parameters_reproduce_data(self):
+        from qiskit_metal.analyses.em.transmission_fitting import fit_transmission
+
+        ql = 1 / (1 / self.qc + 1 / self.qi)
+        linewidth = self.fr / ql
+        for n_lw, tau, phi in [(2, 0.0, 0.15), (6, 0.0, 0.15), (50, 30e-9, 0.3), (6, 40e-9, -0.2)]:
+            f = np.linspace(self.fr - n_lw * linewidth, self.fr + n_lw * linewidth, 801)
+            s = _notch_general(f, 0.8, 0.4, tau, ql, self.qc, self.fr, phi)
+            for detrend in (True, False):
+                if tau and not detrend:
+                    continue
+                p, _ = fit_transmission(f, s, plot=False, detrend=detrend)
+                a = p["amplitude_complex"]
+                rec = _notch_general(
+                    f, abs(a), np.angle(a), p["delay"], p["Qr"], p["Qc"], p["fr"], p["phi0"]
+                )
+                msg = f"+-{n_lw} linewidths, tau={tau}, detrend={detrend}"
+                self.assertLess(np.max(abs(s - rec)), 1e-3, msg=msg)
+                self.assertAlmostEqual(p["Qr"] / ql, 1.0, delta=5e-3, msg=msg)
+                self.assertAlmostEqual(p["Qc"] / self.qc, 1.0, delta=5e-3, msg=msg)
+                self.assertAlmostEqual(abs(a), 0.8, delta=1e-3, msg=msg)
+
+    def test_full_output_matches_dict(self):
+        from qiskit_metal.analyses.em.transmission_fitting import fit_transmission
+
+        ql = 1 / (1 / self.qc + 1 / self.qi)
+        f = np.linspace(self.fr - 6e6, self.fr + 6e6, 401)
+        s = _notch_general(f, 0.8, 0.4, 20e-9, ql, self.qc, self.fr, 0.1)
+        vals, _, raw, cov = fit_transmission(f, s, plot=False, full_output=True)
+        self.assertAlmostEqual(raw[0] * np.exp(1j * raw[1]), vals[0], places=12)
+        self.assertAlmostEqual(raw[6], vals[-1].real, places=20)
+        self.assertEqual(cov.shape, (7, 7))
