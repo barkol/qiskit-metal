@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 import scqubits as scq
 from sympy import Matrix
-from scipy import optimize, integrate
+from scipy import integrate
 
 from qiskit_metal.toolbox_python.utility_functions import get_all_args
 from qiskit_metal.analyses.em.cpw_calculations import guided_wavelength
@@ -148,16 +148,25 @@ def analyze_loaded_tl(fr, vp, Z0, cap_loading: dict[str, float], shorted=False):
         else:
             return wr * (w_L + w_R) / (wr**2 - w_L * w_R)
 
-    root_eq = lambda L: (
-        np.arctan(_arctan_arg(w_loading_vals[0], w_loading_vals[1])) + m * np.pi - k * L
-    )  # = 0
-    sol = optimize.root(root_eq, [0.007], jac=False, method="hybr")  # in meters SI
-    Ltl = sol.x[0]
+    # arctan(...) + m*pi - k*L = 0 is linear in L: solve it in closed form
+    # (in meters SI)
+    Ltl = (np.arctan(_arctan_arg(w_loading_vals[0], w_loading_vals[1])) + m * np.pi) / k
 
-    E_cap = (
-        0.5 * c * integrate.quad(utl2, 0, Ltl)[0]
-        + 0.5 * cap_loading[z["0"]] * utl(0) ** 2
-        + 0.5 * cap_loading[z["L"]] * utl(Ltl) ** 2
+    # A shorted end (w_loading = 0) has u = 0 and stores no energy. Its
+    # stand-in capacitance _POS_INFTY must not enter the energy: there it
+    # multiplies the rounding error of cos(k L + phi) ~ 1e-16 and adds
+    # noise of order 1e-4 relative to the result.
+    u_end = {}
+    for node in cap_loading:
+        if w_loading[node] == 0:
+            u_end[node] = 0.0
+        else:
+            u_end[node] = utl(0) if node == z["0"] else utl(Ltl)
+
+    E_cap = 0.5 * c * integrate.quad(utl2, 0, Ltl)[0] + sum(
+        0.5 * cap_loading[node] * u_end[node] ** 2
+        for node in cap_loading
+        if w_loading[node] != 0
     )
 
     pCL = {}
@@ -165,10 +174,12 @@ def analyze_loaded_tl(fr, vp, Z0, cap_loading: dict[str, float], shorted=False):
     Phi_zpf = {}
 
     for node, val in cap_loading.items():
-        if node == z["0"]:
-            pCL[node] = 0.5 * val * utl(0) ** 2 / E_cap
-        else:
-            pCL[node] = 0.5 * val * utl(Ltl) ** 2 / E_cap
+        if w_loading[node] == 0:
+            pCL[node] = 0.0
+            Q_zpf[node] = 0.0
+            Phi_zpf[node] = np.inf
+            continue
+        pCL[node] = 0.5 * val * u_end[node] ** 2 / E_cap
         Q_zpf[node] = np.sqrt(hbar * wr / 2 * pCL[node] * val)
 
         # using the uncertainty relationship that Q_zpf * Phi_zpf = hbar / 2;

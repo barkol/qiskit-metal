@@ -345,3 +345,48 @@ class TestAnalyzeLoadedTLInput(unittest.TestCase):
             before = dict(loading)
             analyze_loaded_tl(7000.0, vp, 50.0, loading, shorted=shorted)
             self.assertEqual(loading, before)
+
+
+class TestAnalyzeLoadedTLShortedSmooth(unittest.TestCase):
+    """The shorted end of analyze_loaded_tl stores no energy and adds no
+    numerical noise."""
+
+    vp = 299792458.0 / np.sqrt(6.065)
+
+    def test_q_zpf_smooth_in_frequency(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+
+        fs = np.linspace(6000.0, 6000.001, 41)
+        qs = np.array(
+            [
+                analyze_loaded_tl(f, self.vp, 50.0, {"Q": 50.0}, shorted=True)[0]["Q"]
+                for f in fs
+            ]
+        )
+        x = fs - fs[0]
+        resid = qs - np.polyval(np.polyfit(x, qs, 2), x)
+        # the 1e30 fF stand-in for the short gave ~1e-4 relative noise
+        self.assertLess(np.max(abs(resid)) / qs[0], 1e-10)
+
+    def test_matches_closed_form(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+        from scipy.constants import hbar
+
+        fr, z0, cap = 6000.0, 50.0, 50e-15
+        w = 2 * np.pi * fr * 1e6
+        k = w / self.vp
+        c = 1 / (z0 * self.vp)
+        # u(z) = sin(k (L - z)) vanishes at the short z = L
+        length = np.arctan(1 / (w * z0 * cap)) / k
+        e_line = 0.5 * c * (length / 2 - np.sin(2 * k * length) / (4 * k))
+        e_cap = 0.5 * cap * np.sin(k * length) ** 2
+        q_expected = np.sqrt(hbar * w / 2 * cap * e_cap / (e_line + e_cap))
+        q, phi_zpf, _, ltl = analyze_loaded_tl(fr, self.vp, z0, {"Q": 50.0}, shorted=True)
+        self.assertAlmostEqual(ltl / length, 1.0, places=12)
+        self.assertAlmostEqual(q["Q"] / q_expected, 1.0, places=10)
+        self.assertEqual(q["_cl"], 0.0)
+        self.assertEqual(phi_zpf["_cl"], np.inf)
