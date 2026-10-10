@@ -5,12 +5,12 @@ The ``Ic_from_Lj`` / ``Ej_from_Lj`` / ``Ec_from_Cs`` helpers are
 vendored from ``pyEPR.calcs.convert.Convert`` so the analyses path
 doesn't carry a runtime pyEPR dependency. The formulas are textbook.
 
-Constants are kept at the original metal precision (CODATA 2014) for
-internal consistency — ``lumped_capacitive.transmon_props`` and other
-analysis functions use these values directly, and existing tests have
-hardcoded expected values to this precision. The difference vs pyEPR's
-SI 2019 constants is ~10⁻⁷ relative — below any quantum measurement
-precision, well below the ``assertAlmostEqual`` test tolerance.
+The physical constants are the exact SI (2019) values from
+``scipy.constants``, and both flux quanta are derived from them, so
+``phinot == h / (2 * e)`` and ``phi0 == hbar / (2 * e)`` hold to
+machine precision. (Until #1207 ``phinot`` was the truncated
+``2.067e-15``, 4e-4 low, while other call sites used the full
+``hbar / 2e``.)
 
 ``phi0`` here is the **reduced** flux quantum (ℏ/2e). ``phinot`` is
 the **full** flux quantum (h/2e). This matches the pre-vendor
@@ -19,6 +19,7 @@ them.
 """
 
 import numpy as np
+import scipy.constants as _sc
 
 MHzRad = 2 * np.pi * 1e6
 GHzRad = 2 * np.pi * 1e9
@@ -27,13 +28,12 @@ NANO = 1e-9
 FEMTO = 1e-15
 ONE_OVER_FEMTO = 1e15
 
-# Original metal constants (CODATA 2014 precision). Kept stable so
-# existing analyses + tests don't shift.
-e = 1.60217657e-19  # electron charge
-h = 6.62606957e-34  # Plank's
-hbar = 1.0545718e-34  # Plank's reduced
-phinot = 2.067 * 1e-15  # magnetic flux quantum (full, h/2e)
-phi0 = phinot / (2 * np.pi)  # reduced magnetic flux quantum (ℏ/2e)
+# Exact SI (2019) values from scipy.constants.
+e = _sc.e  # electron charge
+h = _sc.h  # Planck's constant
+hbar = _sc.hbar  # reduced Planck's constant
+phinot = h / (2 * e)  # magnetic flux quantum (full, h/2e)
+phi0 = hbar / (2 * e)  # reduced magnetic flux quantum (ℏ/2e)
 
 
 # ---------------------------------------------------------------------------

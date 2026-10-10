@@ -483,7 +483,7 @@ def levels_vs_ng_real_units(Cq, IC, N=301, do_disp=0, do_plots=0):
     V = np.diag(-0.5 * np.ones([dim - 1]), 1)
     V = V + np.transpose(np.conj(V))
 
-    varphi = hbar / 2 / e
+    varphi = phi0  # reduced flux quantum hbar / 2e
     EJ = IC * varphi
 
     elvls = np.zeros([dim, N])

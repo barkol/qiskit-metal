@@ -205,7 +205,7 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
     def test_analysis_lumped_ic_from_lj(self):
         """Test the Ic_from_Lj function in lumped_capacitives.py."""
         self.assertAlmostEqualRel(
-            lumped_capacitive.Ic_from_Lj(5e9), 6.579465347418954e-26, rel_tol=1e-26
+            lumped_capacitive.Ic_from_Lj(5e9), 6.582119569509067e-26, rel_tol=1e-12
         )
 
     def test_analysis_lumped_ic_from_ej(self):
@@ -218,50 +218,51 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
         """Test the functionality of lumped_transmon_props in
         lumped_capacitives.py."""
         # Setup expected test results
+        # LJ, EJ and Zqp use the exact flux quantum h/2e (#1207).
         expected = [
             (
-                3.2897326737094774e-12,
-                311949615351887.6,
-                0.00018137620223473302,
-                1.2170673260260538,
-                55134023.405734204,
-                55134024.62280153,
+                3.2910597847545332e-12,
+                312075453723038.2,
+                0.00018141278303235783,
+                1.2170674028939734,
+                55122905.96095843,
+                55122907.178025834,
                 0.0,
             ),
             (
-                3.2897326737094773e-13,
-                3119496153518876.0,
-                1.81376202234733e-05,
-                0.12170673260260537,
-                55134024.501094796,
-                55134024.62280153,
+                3.2910597847545336e-13,
+                3120754537230381.5,
+                1.814127830323578e-05,
+                0.12170674028939735,
+                55122907.056319095,
+                55122907.178025834,
                 0.0,
             ),
             (
-                3.289732673709477e-14,
-                3.1194961535188764e16,
-                1.8137620223473303e-06,
-                0.012170673260260537,
-                55134024.610630855,
-                55134024.62280153,
+                3.2910597847545336e-14,
+                3.1207545372303816e16,
+                1.8141278303235783e-06,
+                0.012170674028939735,
+                55122907.16585516,
+                55122907.178025834,
                 0.0,
             ),
             (
-                3.2897326737094773e-16,
-                3.119496153518876e18,
-                1.8137620223473303e-08,
-                0.00012170673260260537,
-                55134024.62267982,
-                55134024.62280153,
+                3.2910597847545335e-16,
+                3.1207545372303816e18,
+                1.8141278303235783e-08,
+                0.00012170674028939735,
+                55122907.17790413,
+                55122907.178025834,
                 0.0,
             ),
             (
-                3.289732673709477e-17,
-                3.1194961535188763e19,
-                1.8137620223473302e-09,
-                1.2170673260260537e-05,
-                55134024.62278935,
-                55134024.62280153,
+                3.2910597847545335e-17,
+                3.120754537230382e19,
+                1.8141278303235782e-09,
+                1.2170674028939735e-05,
+                55122907.17801366,
+                55122907.178025834,
                 0.0,
             ),
         ]
@@ -276,8 +277,10 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
 
         # Test all elements of the result data against expected data
         self.assertEqual(len(expected), len(result))
-        for x, _ in enumerate(expected):
-            self.assertAlmostEqual(_, result[x])
+        for exp_row, res_row in zip(expected, result):
+            self.assertEqual(len(exp_row), len(res_row))
+            for exp_val, res_val in zip(exp_row, res_row):
+                self.assertAlmostEqualRel(exp_val, res_val, rel_tol=1e-12)
 
     def test_analyses_lumped_chi(self):
         """Test the functionality of chi in lumped_capacitives.py."""
@@ -380,8 +383,8 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
         test_b_result = lumped_capacitive.cos_to_mega_and_delta(1000, -100, 0.258, 200)
 
         # Test all elements of the result data against expected data
-        self.assertAlmostEqual(278.9538182848156, test_a_result)
-        self.assertAlmostEqual(197.27085868098266, test_b_result)
+        self.assertAlmostEqual(278.9538185168108, test_a_result)
+        self.assertAlmostEqual(197.2708588429048, test_b_result)
 
         with self.assertRaises(ZeroDivisionError):
             test_a_result = lumped_capacitive.cos_to_mega_and_delta(0, 100, 200, 200)

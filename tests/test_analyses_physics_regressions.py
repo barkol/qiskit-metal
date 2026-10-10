@@ -152,3 +152,32 @@ class TestAnalyzeLoadedTLShorted(unittest.TestCase):
         # The quarter-wave line stores the same energy in half the length,
         # so the charge fluctuation at its open end is sqrt(2) larger.
         self.assertAlmostEqual(q_short["Q"] / q_open["Q"], np.sqrt(2), places=3)
+
+
+class TestFluxQuantum(unittest.TestCase):
+    """The flux quanta are the exact h/2e and hbar/2e (#1207)."""
+
+    def test_constants_exact(self):
+        import scipy.constants as sc
+
+        from qiskit_metal.analyses.quantization import constants
+
+        self.assertAlmostEqual(constants.phinot / (sc.h / (2 * sc.e)), 1.0, places=12)
+        self.assertAlmostEqual(constants.phi0 / (sc.hbar / (2 * sc.e)), 1.0, places=12)
+        self.assertAlmostEqual(constants.phinot / constants.phi0, 2 * np.pi, places=12)
+
+    def test_ej_from_lj(self):
+        import scipy.constants as sc
+
+        from qiskit_metal.analyses.quantization import lumped_capacitive
+        from qiskit_metal.analyses.quantization.constants import Ej_from_Lj
+
+        # E_J/h = (hbar/2e)^2 / (L_J h): 13.62 GHz for L_J = 12 nH.
+        lj = 12e-9
+        ej_hz = (sc.hbar / (2 * sc.e)) ** 2 / lj / sc.h
+        self.assertAlmostEqual(Ej_from_Lj(12.0, "nH", "Hz") / ej_hz, 1.0, places=12)
+        # LOM 1.0: Ic from Lj and Lj from Ic use the same flux quantum.
+        ic = lumped_capacitive.Ic_from_Lj(lj)
+        lj_back = lumped_capacitive.transmon_props(ic, 65e-15)[0]
+        self.assertAlmostEqual(lj_back / lj, 1.0, places=12)
+        self.assertAlmostEqual(ic / (sc.hbar / (2 * sc.e) / lj), 1.0, places=12)
