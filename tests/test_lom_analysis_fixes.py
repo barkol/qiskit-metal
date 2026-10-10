@@ -210,5 +210,56 @@ class TestLargeHilbertSpaceWarning(unittest.TestCase):
         warn.assert_not_called()
 
 
+class TestLomIssue1210(unittest.TestCase):
+    """run_lom passes res_L4_corr; levels use eigvalsh; result types (#1210)."""
+
+    def test_run_lom_passes_res_L4_corr(self):
+        from qiskit_metal.analyses.quantization.constants import Ic_from_Lj
+
+        def readout_g(corr):
+            a = LOManalysis()
+            a.setup.freq_bus = []
+            a.setup.res_L4_corr = corr
+            a.sim.capacitance_matrix = _cmat_df()
+            return float(a.run_lom()["gr MHz"].iloc[0])
+
+        direct = extract_transmon_coupled_Noscillator(
+            _CMAT_FF * 1e-15,
+            Ic_from_Lj(12, "nH", "A"),
+            2e-15,
+            1,
+            [],
+            7.0,
+            res_L4_corr=[1],
+        )
+        g_l4 = readout_g([1])
+        self.assertAlmostEqual(g_l4, abs(direct["gbus"][0]), places=9)
+        self.assertNotAlmostEqual(g_l4, readout_g(None), places=3)
+        self.assertAlmostEqual(readout_g([0]), readout_g(None), places=9)
+
+    def test_levels_no_complex_warning(self):
+        import warnings
+
+        from qiskit_metal.analyses.quantization.lumped_capacitive import (
+            levels_vs_ng_real_units,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fq, alpha, _, _ = levels_vs_ng_real_units(65.0, 27.4, N=11)
+        self.assertTrue(np.isreal(fq))
+        self.assertLess(alpha, 0)
+
+    def test_hamiltonian_results_annotation(self):
+        import inspect
+
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            CompositeSystem,
+        )
+
+        sig = inspect.signature(CompositeSystem.hamiltonian_results)
+        self.assertIs(sig.return_annotation, dict)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
