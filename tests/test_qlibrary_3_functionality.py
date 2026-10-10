@@ -578,3 +578,32 @@ class TestComponentFunctionality(unittest.TestCase, AssertionsMixin):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestConnectionPadAddedLater(unittest.TestCase):
+    """A connection pad added after construction gets the class defaults
+    (#1226)."""
+
+    def test_pad_added_after_creation_builds(self):
+        from qiskit_metal import Dict, designs
+        from qiskit_metal.qlibrary.qubits.transmon_pocket import TransmonPocket
+
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        q = TransmonPocket(d, "Q1", options=dict(connection_pads=dict(a=dict(loc_W=1, loc_H=1))))
+        q.options.connection_pads.b = Dict(loc_W=-1, loc_H=-1)
+        d.rebuild()
+        self.assertEqual(q.status, "good")
+        self.assertEqual(sorted(q.pins), ["a", "b"])
+
+        ref_design = designs.DesignPlanar()
+        ref = TransmonPocket(
+            ref_design,
+            "Q1",
+            options=dict(
+                connection_pads=dict(a=dict(loc_W=1, loc_H=1), b=dict(loc_W=-1, loc_H=-1))
+            ),
+        )
+        self.assertEqual(q.options.connection_pads.b, ref.options.connection_pads.b)
+        for pin in ("a", "b"):
+            np.testing.assert_allclose(q.pins[pin].points, ref.pins[pin].points)

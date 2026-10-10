@@ -102,3 +102,25 @@ class BaseQubit(QComponent):
                 ]
             )
             self.options.connection_pads[name].update(my_options_connection_pads)
+
+    def _fill_connection_pad_defaults(self):
+        """Give every connection pad the class defaults for the keys it does
+        not set. Idempotent; lets a pad added after construction
+        (``q.options.connection_pads.b = Dict(loc_W=-1)``) build like one
+        given at construction."""
+        template = self.design.template_options.get(self.class_name, {})
+        defaults = template.get("_default_connection_pads") if template else None
+        if not defaults:
+            return
+        for name, pad in self.options.connection_pads.items():
+            if pad is None:
+                pad = self.options.connection_pads[name] = Dict()
+            for key, value in defaults.items():
+                if key not in pad:
+                    pad[key] = deepcopy(value)
+
+    def rebuild(self) -> None:
+        """Fill in connection-pad defaults, then build (see
+        :meth:`QComponent.rebuild`)."""
+        self._fill_connection_pad_defaults()
+        super().rebuild()
