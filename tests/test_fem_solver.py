@@ -44,6 +44,16 @@ class TestAnalyticPackageModes(unittest.TestCase):
         approx = pm.lsm_mode_approx(1, 1, Lx=30, Ly=30, Lz=3, t=0.5, eps_r=11.9)
         self.assertLess(abs(approx["f"] / mode.f - 1), 0.02)
 
+    def test_approx_warns_outside_validity(self):
+        # follow-up to #1211: k_z,Si t << 1 is the validity condition
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            pm.lsm_mode_approx(1, 1, Lx=30, Ly=30, Lz=3, t=0.5, eps_r=11.45)
+        with self.assertWarnsRegex(UserWarning, "validity"):
+            pm.lsm_mode_approx(1, 1, Lx=5, Ly=5, Lz=3, t=0.5, eps_r=11.45)
+
     def test_without_the_slab_it_is_the_box_mode(self):
         mode = pm.lsm_mode(1, 1, Lx=30, Ly=30, Lz=3, t=1e-6, eps_r=11.9)
         tm110 = C0 / 2 * np.hypot(1 / 30e-3, 1 / 30e-3)

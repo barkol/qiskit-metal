@@ -36,6 +36,7 @@ is :mod:`qiskit_metal.analyses.fem`.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -157,14 +158,30 @@ def lsm_mode(a, b, Lx, Ly, Lz, t, eps_r, Em=1.0):
 
 
 def lsm_mode_approx(a, b, Lx, Ly, Lz, t, eps_r, Em=1.0):
-    """The closed-form approximations at the end of Appendix E (SI units)."""
+    """The closed-form approximations at the end of Appendix E (SI units).
+
+    They assume ``k_z,Si t << 1`` (thin substrate compared with the field
+    variation across it). For an L x L x 3 mm box with 0.5 mm of silicon the
+    frequency is 0.2 % high at L = 30 mm, 3 % at 8 mm, 13 % at 5 mm and 90 %
+    at 2 mm. A ``UserWarning`` is emitted when ``k_z,Si t > 0.5`` (error of
+    about 1 % or more); use :func:`lsm_mode` there.
+    """
     Lx, Ly, Lz, t = [1e-3 * v for v in (Lx, Ly, Lz, t)]
     gamma = np.hypot(a * np.pi / Lx, b * np.pi / Ly)
     eps_eff = 1 / (t / Lz / eps_r + (1 - t / Lz))
     V = Lx * Ly * Lz
+    kz_si = gamma * np.sqrt((eps_r - 1) * (1 - t / Lz))
+    if kz_si * t > 0.5:
+        warnings.warn(
+            f"lsm_mode_approx: k_z,Si t = {kz_si * t:.2f} > 0.5, outside the "
+            "validity of the closed-form approximation (k_z,Si t << 1); the "
+            "frequency is off by more than about 1 %. Use lsm_mode().",
+            UserWarning,
+            stacklevel=2,
+        )
     return dict(
         f=C0 * gamma / np.sqrt(eps_eff) / (2 * np.pi),
-        kz_si=gamma * np.sqrt((eps_r - 1) * (1 - t / Lz)),
+        kz_si=kz_si,
         kz_air=gamma * np.sqrt(1 - 1 / eps_eff),
         E0x=(eps_r - 1)
         * np.pi
