@@ -313,9 +313,14 @@ class ShortSegmentRule(DesignRule):
     renderer fails outright on them. This is the design-wide form of the
     condition behind issue #1086.
 
-    ``margin`` scales the requirement: 1.0 asks only that a segment be as
-    long as the fillet radius, which is the bare geometric minimum and in
-    practice still marginal, so the default asks for a little more.
+    ``margin`` scales the requirement. The default 1.0 asks only that a
+    segment be as long as the fillet radius (twice that between two
+    corners), which is the bare geometric minimum and in practice still
+    marginal; pass a larger margin to ask for more. A segment exactly at the
+    limit passes (lengths are compared with a 1e-9 design-unit tolerance).
+
+    A CPW is stored as a ``trace`` and a ``cut`` path along the same
+    centreline; each short segment is reported once per route.
     """
 
     name = "short-segment"
@@ -330,7 +335,11 @@ class ShortSegmentRule(DesignRule):
         tables = design.qgeometry.tables
         if "path" not in tables:
             return
-        for _, row in tables["path"].iterrows():
+        paths = tables["path"]
+        # Drawn metal first, so a route's finding names its trace row.
+        paths = paths.iloc[np.argsort(paths["subtract"].astype(bool), kind="stable")]
+        seen: set = set()
+        for _, row in paths.iterrows():
             fillet = row.get("fillet", None)
             if fillet is None or not np.isfinite(fillet) or fillet <= 0:
                 continue
@@ -338,13 +347,20 @@ class ShortSegmentRule(DesignRule):
             coords = np.asarray(row["geometry"].coords, dtype=float)
             if len(coords) < 3:
                 continue  # no interior corner to round
+            # The trace and the cut of one CPW share the centreline.
+            key = (row["component"], float(fillet), np.round(coords, 9).tobytes())
+            if key in seen:
+                continue
+            seen.add(key)
             seg = np.linalg.norm(np.diff(coords, axis=0), axis=1)
             # Only interior segments sit between two corners; the first and
             # last run into an end pin and need no room on the outer side.
             for idx in range(len(seg)):
                 is_interior = 0 < idx < len(seg) - 1
                 needed = limit * (2.0 if is_interior else 1.0)
-                if seg[idx] >= needed:
+                # Tolerance: a segment drawn exactly at the limit can come out
+                # an ulp short in floating point.
+                if seg[idx] >= needed - 1e-9:
                     continue
                 midpoint = (coords[idx] + coords[idx + 1]) / 2.0
                 yield Finding(

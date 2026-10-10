@@ -258,6 +258,44 @@ class TestShortSegmentRule(unittest.TestCase):
         self.assertIs(findings[0].severity, Severity.WARNING)
         self.assertLess(findings[0].value, findings[0].limit)
 
+    def test_short_segment_reported_once_per_route(self):
+        """The trace and cut rows of one CPW used to give two findings (#1213)."""
+        design = _design()
+        self._bent_route(design, "tight", reach="0.1mm", fillet="150um")
+        design.rebuild()
+        findings = [
+            f for f in ShortSegmentRule().check(design) if "tight" in f.components
+        ]
+        keys = [(f.components, f.location) for f in findings]
+        self.assertTrue(findings)
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertTrue(all(".trace " in f.message for f in findings))
+
+    def test_segment_exactly_at_the_limit_passes(self):
+        """start_straight == fillet: the segment can come out an ulp short of
+        the fillet in floating point; that is not a short segment (#1213)."""
+        design = _design()
+        OpenToGround(
+            design, "A", options=dict(pos_x="0mm", pos_y="0mm", orientation="180")
+        )
+        OpenToGround(
+            design, "B", options=dict(pos_x="1mm", pos_y="0.6mm", orientation="0")
+        )
+        RoutePathfinder(
+            design,
+            "P",
+            options=Dict(
+                fillet="90um",
+                lead=Dict(start_straight="90um", end_straight="90um"),
+                pin_inputs=Dict(
+                    start_pin=Dict(component="A", pin="open"),
+                    end_pin=Dict(component="B", pin="open"),
+                ),
+            ),
+        )
+        design.rebuild()
+        self.assertEqual(list(ShortSegmentRule().check(design)), [])
+
     def test_generous_segment_passes(self):
         design = _design()
         self._bent_route(design, "roomy", reach="2mm", fillet="50um")
