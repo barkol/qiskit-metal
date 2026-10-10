@@ -93,16 +93,47 @@ class RouteMeander(QRoute):
             self.head.length + self.tail.length
         )
 
-        arc_pts = self.connect_meandered(meander_start_point, meander_end_point)
+        def build():
+            self._meander_messages = []
+            arc_pts = self.connect_meandered(meander_start_point, meander_end_point)
+            self.intermediate_pts = arc_pts
+            self.intermediate_pts = self.adjust_length(
+                self.p.total_length - self.length,
+                arc_pts,
+                meander_start_point,
+                meander_end_point,
+            )
+            return self.p.total_length - self.length
 
-        self.intermediate_pts = arc_pts
-
-        self.intermediate_pts = self.adjust_length(
-            self.p.total_length - self.length,
-            arc_pts,
-            meander_start_point,
-            meander_end_point,
-        )
+        # The meander is sized from the straight-line lengths of the leads,
+        # and adjust_length cannot always recover what the fillets take off
+        # (e.g. the corners of a jogged lead, or a meander too short to
+        # shift): hand the remaining deficit back to the meander and rebuild,
+        # keeping the closest result.
+        deficit = build()
+        best = (abs(deficit), self.intermediate_pts, self._meander_messages)
+        # secant iteration on the meander's target length (the drawn length
+        # responds to it with a slope below 1 when wiggles are clipped)
+        x_prev, d_prev = None, None
+        for _ in range(8):
+            if abs(deficit) <= 1e-7:
+                break
+            x = self._length_segment
+            if d_prev is None or d_prev == deficit:
+                step = deficit
+            else:
+                slope = (d_prev - deficit) / (x - x_prev)  # d(drawn)/dx
+                if slope <= 1e-3:
+                    break  # the drawn length no longer responds
+                step = deficit / slope
+            x_prev, d_prev = x, deficit
+            self._length_segment = x + step
+            deficit = build()
+            if abs(deficit) < best[0]:
+                best = (abs(deficit), self.intermediate_pts, self._meander_messages)
+        _, self.intermediate_pts, messages = best
+        for level, message in messages:
+            getattr(self.logger, level)(message)
 
         # The meander construction can fall short of total_length (e.g. when
         # the spacing leaves no room to redistribute the slack); say so.
@@ -117,6 +148,13 @@ class RouteMeander(QRoute):
 
         # Make points into elements
         self.make_elements(self.get_points())
+
+    def _meander_log(self, level: str, message: str):
+        """Collect a message of connect_meandered; make() logs those of the
+        build it keeps (it may rebuild the meander to reach total_length)."""
+        if not hasattr(self, "_meander_messages"):
+            self._meander_messages = []
+        self._meander_messages.append((level, message))
 
     def connect_meandered(
         self, start_pt: QRoutePoint, end_pt: QRoutePoint
@@ -177,7 +215,7 @@ class RouteMeander(QRoute):
         # Breakup into sections
         meander_number = np.floor(length_direct / spacing)
         if meander_number < 1:
-            self.logger.info(f"Zero meanders for {self.name}")
+            self._meander_log("info", f"Zero meanders for {self.name}")
             return np.empty((0, 2), float)
 
         # The start and end points can have 4 directions each. Depending on the direction
@@ -210,7 +248,7 @@ class RouteMeander(QRoute):
         # IndexError. Same graceful no-meander degradation as the first
         # check after floor().
         if meander_number < 1:
-            self.logger.info(f"Zero meanders for {self.name}")
+            self._meander_log("info", f"Zero meanders for {self.name}")
             return np.empty((0, 2), float)
 
         # should the first meander go sideways or counter sideways?
@@ -235,13 +273,14 @@ class RouteMeander(QRoute):
             # Nothing is left for a meander: say so (the drawn length is
             # reported after adjust_length in make()).
             min_length = self.p.total_length - length_excess
-            self.logger.warning(
+            self._meander_log(
+                "warning",
                 f"{self.name}: total_length={self.p.total_length:.6g} mm leaves no "
                 f"length for a meander: the leads, the direct distance and "
                 f"2*|meander.asymmetry| between {self.name}.start and "
                 f"{self.name}.end take about {min_length:.6g} mm (minimum route "
                 "length before fillet corrections). Increase total_length or "
-                "shorten the leads."
+                "shorten the leads.",
             )
         # how much meander offset from center-line is needed to accommodate the length_excess (perpendicular length)
         length_perp = max(0, length_excess / (meander_number * 2.0))
@@ -262,9 +301,14 @@ class RouteMeander(QRoute):
             original_meander_number = meander_number
             while meander_number > 1 and length_perp < self.p.fillet:
                 meander_number -= 2
-                length_perp = max(0, length_excess / (meander_number * 2.0))
+                length_perp = (
+                    max(0, length_excess / (meander_number * 2.0))
+                    if meander_number > 0
+                    else 0.0
+                )
             if meander_number != original_meander_number:
-                self.logger.warning(
+                self._meander_log(
+                    "warning",
                     f"{self.name}: reduced meander_number from "
                     f"{original_meander_number} to {meander_number} so each "
                     f"wiggle has room for the {self.p.fillet}mm fillet "
@@ -273,21 +317,22 @@ class RouteMeander(QRoute):
                     "the available length_excess can support without "
                     "producing sharp, unfileted kinks. Increase total_length, "
                     "increase meander.spacing, or decrease fillet to avoid "
-                    "this adjustment."
+                    "this adjustment.",
                 )
             if length_perp < self.p.fillet:
-                self.logger.warning(
+                self._meander_log(
+                    "warning",
                     f"{self.name}: even at the minimum meander_number={meander_number}, "
                     f"length_perp={length_perp:.4g}mm is still smaller than "
                     f"fillet={self.p.fillet}mm -- this route's meander cannot be "
                     "cleanly filleted with the current total_length / spacing / "
-                    "fillet combination and will still show sharp kinks."
+                    "fillet combination and will still show sharp kinks.",
                 )
 
         # The fillet reduction above steps by 2 and can reach 0 from an even
         # count; with a single row the snap alignment below would crash.
         if meander_number < 1:
-            self.logger.info(f"Zero meanders for {self.name}")
+            self._meander_log("info", f"Zero meanders for {self.name}")
             return np.empty((0, 2), float)
 
         # USES ROW Vectors
@@ -525,9 +570,11 @@ class RouteMeander(QRoute):
                         not_a_meander = 1
 
         # Finally, divide the slack amongst all points...
-        sideways_adjustment = sideways * (
-            delta_length / (np.count_nonzero(adjustment_vector) - not_a_meander)
-        )
+        n_shifted = np.count_nonzero(adjustment_vector) - not_a_meander
+        if n_shifted <= 0:
+            # every meander point is blocked (too few wiggles): nothing to shift
+            return pts
+        sideways_adjustment = sideways * (delta_length / n_shifted)
         pts = (
             pts + sideways_adjustment[np.newaxis, :] * adjustment_vector[:, np.newaxis]
         )

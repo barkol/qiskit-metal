@@ -201,26 +201,29 @@ class TestMeanderFilletFit(unittest.TestCase):
             msg="meander_number was reduced for a route that didn't need it",
         )
 
-    def test_reduction_warning_logged_for_tight_case(self):
+    def test_tight_case_reaches_length_without_kinks(self):
+        # The first meander build of this case needs the #1086 reduction of
+        # meander_number; RouteMeander then rebuilds the meander until the
+        # drawn length (fillets included) equals total_length, and the kept
+        # build has deep enough wiggles for the fillet.
+        from qiskit_metal.validation import validate
+
         design = designs.DesignPlanar()
         design.overwrite_enabled = True
-        with self.assertLogs("metal", level="WARNING") as cm:
-            self._route(
-                design,
-                "tight_logged",
-                total_length="2.4mm",
-                spacing="450um",
-                fillet="100um",
-                pos_a=("0mm", "0mm"),
-                pos_b=("0mm", "1.81mm"),
-                ori_a="270",
-                ori_b="90",
-            )
-            design.rebuild()
-        # make() runs once at construction and again at rebuild(), so the
-        # warning is expected at least once (exact count isn't the contract).
-        reduction_msgs = [r for r in cm.output if "reduced meander_number" in r]
-        self.assertGreaterEqual(len(reduction_msgs), 1)
+        route = self._route(
+            design,
+            "tight_logged",
+            total_length="2.4mm",
+            spacing="450um",
+            fillet="100um",
+            pos_a=("0mm", "0mm"),
+            pos_b=("0mm", "1.81mm"),
+            ori_a="270",
+            ori_b="90",
+        )
+        self.assertAlmostEqual(route.length, 2.4, places=6)
+        rules = {f.rule for f in validate(design).findings}
+        self.assertFalse(rules & {"sharp-turn", "fillet-starved", "short-segment"})
 
     def test_symmetric_ring_from_issue_1086(self):
         """The concrete repro from the issue: a 4-qubit ring routed with
@@ -414,11 +417,11 @@ class TestMeanderLengthReporting(unittest.TestCase):
             ),
         )
 
-    def test_missed_length_warns(self):
-        with self.assertLogs("metal", level="WARNING") as logs:
-            route = self._build("4.1235mm", "90um", "250um")
-        self.assertGreater(abs(route.length - 4.1235), 1e-3)
-        self.assertTrue(any("differs from total_length" in m for m in logs.output))
+    def test_previously_missed_length_is_reached(self):
+        # 90 um fillet, 250 um spacing: the single-pass meander was 46.5 um
+        # short, because adjust_length could not shift the blocked wiggles
+        route = self._build("4.1235mm", "90um", "250um")
+        self.assertAlmostEqual(route.length, 4.1235, places=6)
 
     def test_reached_length_no_warning(self):
         import logging
@@ -443,3 +446,64 @@ class TestMeanderLengthReporting(unittest.TestCase):
         self.assertTrue(any("minimum route length" in m for m in logs.output))
         self.assertTrue(any("differs from total_length" in m for m in logs.output))
         self.assertEqual(route.status, "good")
+
+
+class TestMeanderJoggedLeadLength(unittest.TestCase):
+    """RouteMeander reaches total_length with jogged, filleted leads: the
+    fillet shortening of the jogs is given back to the meander
+    (MPK: meander_jogged_length)."""
+
+    def _build(self, total_length, jogs_start=None, jogs_end=None, fillet="99um"):
+        from collections import OrderedDict
+
+        from qiskit_metal import Dict, designs
+        from qiskit_metal.qlibrary.terminations.open_to_ground import OpenToGround
+        from qiskit_metal.qlibrary.tlines.meandered import RouteMeander
+
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        OpenToGround(
+            d, "A", options=dict(pos_x="-1.5mm", pos_y="0mm", orientation="180")
+        )
+        OpenToGround(d, "B", options=dict(pos_x="1.5mm", pos_y="0mm", orientation="0"))
+        lead = Dict(start_straight="100um", end_straight="100um")
+        if jogs_start:
+            lead.start_jogged_extension = OrderedDict(enumerate(jogs_start))
+        if jogs_end:
+            lead.end_jogged_extension = OrderedDict(enumerate(jogs_end))
+        return RouteMeander(
+            d,
+            "R",
+            options=Dict(
+                pin_inputs=Dict(
+                    start_pin=Dict(component="A", pin="open"),
+                    end_pin=Dict(component="B", pin="open"),
+                ),
+                lead=lead,
+                fillet=fillet,
+                total_length=total_length,
+                meander=Dict(spacing="200um", asymmetry="0um"),
+            ),
+        )
+
+    def test_jogged_leads_reach_total_length(self):
+        # each case was short on the single-pass meander (4 mm -> 3.660 mm;
+        # 5 and 6 mm -> 254.9 um short): the fillets of the jogs were never
+        # given back, and the few remaining wiggles could not be shifted
+        zigzag = [["L", "300um"], ["R", "300um"], ["R", "300um"], ["L", "300um"]]
+        detour = [["R", "500um"], ["L", "2500um"], ["L", "500um"]]
+        for total, kwargs in (
+            ("4mm", dict(jogs_start=zigzag)),
+            ("4mm", dict(jogs_end=zigzag)),
+            ("5mm", dict(jogs_end=detour)),
+            ("6mm", dict(jogs_end=detour)),
+        ):
+            route = self._build(total, **kwargs)
+            self.assertAlmostEqual(
+                route.length, float(total[:-2]), places=5, msg=f"{total} {kwargs}"
+            )
+
+    def test_straight_leads_still_reach_total_length(self):
+        for total in ("5mm", "7mm", "9mm"):
+            route = self._build(total)
+            self.assertAlmostEqual(route.length, float(total[:-2]), places=6)
