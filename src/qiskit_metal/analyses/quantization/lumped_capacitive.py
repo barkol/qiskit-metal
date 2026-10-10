@@ -53,6 +53,7 @@ __all__ = [
     "move_index_to",
     "readin_q3d_matrix",
     "readin_q3d_matrix_m",
+    "transmon_charge_ratio",
     "transmon_props",
 ]
 
@@ -128,25 +129,38 @@ def transmon_props(Ic: float, Cq: float):
 # TODO: Move to a more generic file
 
 
-def chi(g: float, wr: float, w01: float, w12: float):
+def chi(g: float, wr: float, w01: float, w12: float, g12: float | None = None):
     r"""
     Calculate the dispersive shift $\chi$, where $2*\chi$ is
     the `|0> --> |1>` splitting).
 
     Accounts for push on the i-th transmon level due to the j-th transmon level,
-    mediated by cavity.
+    mediated by cavity: Koch et al., PRA 76, 042319 (2007), Eqs. (3.9)-(3.10),
+    with the counter-rotating terms ($1/(\omega_{ij} + \omega_r)$) included.
+
+    The 1-2 coupling is ``g12 = g * n12 / n01``, where ``n_ij`` are the charge
+    matrix elements of the transmon. For a transmon, ``n12/n01`` is below the
+    harmonic value $\sqrt{2}$ (about 1.37 at $E_J/E_C = 46$), and using
+    $\sqrt{2}$ overestimates the 1-2 push, underestimating $|\chi|$ by ~20 %.
+    Pass ``g12`` (e.g. ``g * transmon_charge_ratio(EJ / EC)``) for the transmon
+    value; if omitted, the harmonic estimate ``g12 = sqrt(2) * g`` is used.
 
     All args need to be in the same units.
 
     Args:
-        g (float): Qubit-cavity linear coupling.
+        g (float): Qubit-cavity linear coupling (0-1 transition).
         wr (float): Frequency of resonator.
         w01 (float): Qubit 01 transition frequency
         w12 (float): Qubit 12 transition frequency
+        g12 (float, optional): Qubit-cavity coupling of the 1-2 transition.
+            Defaults to ``sqrt(2) * g`` (harmonic scaling).
 
     Returns:
         float: Calculated chi value
     """
+    if g12 is None:
+        # harmonic-oscillator scaling of the matrix elements, n12 = sqrt(2) n01
+        g12 = np.sqrt(2) * g
 
     # Push on the i-th transmon level due to the j-th transmon level
     # mediated by cavity
@@ -156,12 +170,37 @@ def chi(g: float, wr: float, w01: float, w12: float):
     chibus_0 = -2 * g**2 * w01 / (w01**2 - wr**2)  # Koch Eq. (3.10)
 
     # shift of the 1 state
-    # the g of the levels scales rougly as sqrt(n), so the 2 for the 2 / (w12 - wr)
-    chibus_1 = g**2 * (
-        1 / (w01 - wr) - 2 / (w12 - wr) + 1 / (w01 + wr) - 2 / (w12 + wr)
+    chibus_1 = g**2 * (1 / (w01 - wr) + 1 / (w01 + wr)) - g12**2 * (
+        1 / (w12 - wr) + 1 / (w12 + wr)
     )
 
     return (chibus_1 - chibus_0) / 2  # Koch Eq. (3.9)
+
+
+def transmon_charge_ratio(EJ_over_EC: float, ng: float = 0.0, nmax: int = 40):
+    """Ratio of transmon charge matrix elements ``|<1|n|2>| / |<0|n|1>|``.
+
+    Diagonalizes the charge-basis Hamiltonian
+    ``4 EC (n - ng)^2 - EJ cos(phi)`` (in units of EC). The ratio tends to
+    sqrt(2) for a harmonic oscillator; for a transmon it is smaller.
+
+    Args:
+        EJ_over_EC (float): Ratio of Josephson to charging energy.
+        ng (float): Offset charge. Defaults to 0.
+        nmax (int): Charge-basis cutoff (states -nmax..nmax). Defaults to 40.
+
+    Returns:
+        float: n12 / n01
+    """
+    n = np.arange(-nmax, nmax + 1, dtype=float)
+    H = np.diag(4.0 * (n - ng) ** 2) - 0.5 * EJ_over_EC * (
+        np.eye(n.size, k=1) + np.eye(n.size, k=-1)
+    )
+    _, v = np.linalg.eigh(H)
+    n_op = np.diag(n)
+    n01 = abs(v[:, 0] @ n_op @ v[:, 1])
+    n12 = abs(v[:, 1] @ n_op @ v[:, 2])
+    return n12 / n01
 
 
 def extract_transmon_coupled_Noscillator(
@@ -400,7 +439,11 @@ def extract_transmon_coupled_Noscillator(
     # chi's
     # d = -EC
     d = alpha * 2 * np.pi * 1e6
-    Chi_in_MHz = 2 * chi(gqbus, wr, wq, d + wq) / 2 / np.pi / 1e6  # Total chi in MHz
+    # 1-2 coupling from the transmon charge matrix elements (not sqrt(2) * g)
+    g12bus = gqbus * transmon_charge_ratio(EJ / EC)
+    Chi_in_MHz = (
+        2 * chi(gqbus, wr, wq, d + wq, g12=g12bus) / 2 / np.pi / 1e6
+    )  # Total chi in MHz
 
     ham_dict = {}
     ham_dict["fQ"] = wq / 2 / np.pi / 1e9

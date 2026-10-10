@@ -181,3 +181,87 @@ class TestFluxQuantum(unittest.TestCase):
         lj_back = lumped_capacitive.transmon_props(ic, 65e-15)[0]
         self.assertAlmostEqual(lj_back / lj, 1.0, places=12)
         self.assertAlmostEqual(ic / (sc.hbar / (2 * sc.e) / lj), 1.0, places=12)
+
+
+def _transmon_resonator_chi(ej_over_ec, ec, wr, g, n_t=6, n_r=8, nmax=30):
+    """chi = (E11 - E10 - E01 + E00) / 2 from full diagonalization of a
+    charge-basis transmon coupled to a resonator, g = g01 (with the
+    counter-rotating terms)."""
+    n = np.arange(-nmax, nmax + 1, dtype=float)
+    h_t = ec * (
+        np.diag(4.0 * n**2)
+        - 0.5 * ej_over_ec * (np.eye(n.size, k=1) + np.eye(n.size, k=-1))
+    )
+    e_t, v_t = np.linalg.eigh(h_t)
+    e_t, v_t = e_t[:n_t] - e_t[0], v_t[:, :n_t]
+    n_op = v_t.T @ np.diag(n) @ v_t
+    n_op = n_op / abs(n_op[0, 1])  # coupling normalized to g01 = g
+    a = np.diag(np.sqrt(np.arange(1, n_r)), 1)
+    h = (
+        np.kron(np.diag(e_t), np.eye(n_r))
+        + wr * np.kron(np.eye(n_t), a.T @ a)
+        + g * np.kron(n_op, a + a.T)
+    )
+    energies, vecs = np.linalg.eigh(h)
+
+    def level(i_t, i_r):
+        bare = np.zeros(n_t * n_r)
+        bare[i_t * n_r + i_r] = 1.0
+        return energies[np.argmax(abs(bare @ vecs))]
+
+    chi_val = (level(1, 1) - level(1, 0) - level(0, 1) + level(0, 0)) / 2
+    return chi_val, e_t[1], e_t[2] - e_t[1]
+
+
+class TestDispersiveShiftChi(unittest.TestCase):
+    """lumped_capacitive.chi with the transmon 1-2 coupling (#1208)."""
+
+    def test_charge_ratio(self):
+        from qiskit_metal.analyses.quantization.lumped_capacitive import (
+            transmon_charge_ratio,
+        )
+
+        self.assertAlmostEqual(transmon_charge_ratio(46.0), 1.3675, places=3)
+        # Harmonic limit
+        self.assertAlmostEqual(transmon_charge_ratio(2e4), np.sqrt(2), places=2)
+
+    def test_matches_full_diagonalization(self):
+        from qiskit_metal.analyses.quantization.lumped_capacitive import (
+            chi,
+            transmon_charge_ratio,
+        )
+
+        ej_over_ec, ec, wr, g = 46.0, 0.2955, 7.0, 0.070  # GHz
+        chi_exact, w01, w12 = _transmon_resonator_chi(ej_over_ec, ec, wr, g)
+        g12 = g * transmon_charge_ratio(ej_over_ec)
+        self.assertAlmostEqual(
+            chi(g, wr, w01, w12, g12=g12) / chi_exact, 1.0, delta=0.01
+        )
+
+    def test_lom_uses_transmon_ratio(self):
+        from qiskit_metal.analyses.quantization.lumped_capacitive import (
+            chi,
+            extract_transmon_coupled_Noscillator,
+            transmon_charge_ratio,
+        )
+
+        # ground, pad1, pad2, readout (fF): a floating two-pad transmon
+        cmat = 1e-15 * np.array(
+            [
+                [300.0, -30.0, -40.0, -5.0],
+                [-30.0, 110.0, -60.0, -20.0],
+                [-40.0, -60.0, 120.0, -10.0],
+                [-5.0, -20.0, -10.0, 60.0],
+            ]
+        )
+        res = extract_transmon_coupled_Noscillator(
+            cmat, 1e-8, 2e-15, 1, [], 7.0, print_info=False
+        )
+        ej, ec = res["EJ"] * 1e3, res["EC"]  # MHz
+        wq = 2 * np.pi * res["fQ"] * 1e9
+        wr = 2 * np.pi * 7e9
+        g = 2 * np.pi * 1e6 * np.asarray(res["gbus"]).ravel()[0]
+        w12 = wq + 2 * np.pi * 1e6 * res["alpha"]
+        expected = 2 * chi(g, wr, wq, w12, g12=g * transmon_charge_ratio(ej / ec))
+        got = np.asarray(res["chi_in_MHz"]).ravel()[0] * 2 * np.pi * 1e6
+        self.assertAlmostEqual(got / expected, 1.0, places=9)
