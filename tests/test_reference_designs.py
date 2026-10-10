@@ -45,11 +45,10 @@ _DRAWING = re.compile(
 
 #: ``{notebook stem: {rule name: warning count}}`` -- known, tolerated.
 #:
-#: ``short-segment``: both designs route with a 90 um fillet through
+#: ``short-segment``: A.3 routes with a 90 um fillet through
 #: pathfinder jogs shorter than the 180 um a corner arc needs. Cosmetic in
 #: the mpl view, but the GDS and gmsh renderers drop the fillet there.
 KNOWN_WARNINGS = {
-    "A.2-Two-coupled-transmons": {"short-segment": 2},
     "A.3-Four-qubit-multiplexed-readout": {"short-segment": 2},
 }
 
