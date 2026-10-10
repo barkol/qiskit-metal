@@ -122,3 +122,45 @@ class TestWaiver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestWaiverMinValue(unittest.TestCase):
+    """min_value bounds waivers for rules where a smaller value is worse
+    (MPK: validation_waiver_max_value)."""
+
+    @staticmethod
+    def _pair(gap_um):
+        from qiskit_metal.qlibrary.sample_shapes.rectangle import Rectangle
+
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        Rectangle(d, "A", options=dict(pos_x="0um", width="100um", height="100um"))
+        Rectangle(
+            d,
+            "B",
+            options=dict(pos_x=f"{100 + gap_um}um", width="100um", height="100um"),
+        )
+        return d
+
+    def test_min_value_does_not_cover_worse_gap(self):
+        from qiskit_metal.validation import MetalSpacingRule, Waiver, validate
+
+        w = Waiver(
+            "accepted 1.5 um gap",
+            rule="metal-spacing",
+            components=("A", "B"),
+            min_value=1.5e-3,
+        )
+        counts = {}
+        for gap in (1.8, 1.5, 0.1):
+            r = validate(self._pair(gap), rules=[MetalSpacingRule()], waivers=[w])
+            counts[gap] = (len(r.findings), len(r.waived))
+        self.assertEqual(counts[1.8], (0, 1))
+        self.assertEqual(counts[1.5], (0, 1))
+        self.assertEqual(counts[0.1], (1, 0))
+
+    def test_max_value_on_lower_is_worse_rule_warns(self):
+        from qiskit_metal.validation import Waiver
+
+        with self.assertWarnsRegex(UserWarning, "min_value"):
+            Waiver("gap", rule="metal-spacing", max_value=1.5e-3)

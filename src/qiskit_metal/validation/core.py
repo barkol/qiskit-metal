@@ -71,6 +71,14 @@ class Finding:
         return f"[{self.severity}] {self.rule}: {self.message}{where}"
 
 
+#: Built-in rules whose ``Finding.value`` is a dimension where smaller is
+#: worse (a gap, a segment length, a clearance, a radius); bound waivers for
+#: them with ``min_value``.
+LOWER_IS_WORSE_RULES = frozenset(
+    {"metal-spacing", "cpw-gap", "short-segment", "qubit-clearance", "fillet-starved"}
+)
+
+
 @dataclass(frozen=True)
 class Waiver:
     """A documented exemption for findings you have decided are correct.
@@ -103,7 +111,16 @@ class Waiver:
             ``"AB_*"``.
         max_value (float): only waive when the finding's ``value`` is at or
             below this, so a waiver written for a 256 um^2 overlap does not
-            silently cover a 5000 um^2 one later.
+            silently cover a 5000 um^2 one later. Use it for rules where a
+            larger ``value`` is worse (``metal-overlap``, ``chip-bounds``,
+            ``ground-continuity``, ``sharp-turn``, ``pin-alignment``).
+        min_value (float): only waive when the finding's ``value`` is at or
+            above this (within 1e-9 design units). Use it for rules whose ``value`` is a dimension where
+            smaller is worse (``metal-spacing``, ``cpw-gap``,
+            ``short-segment``, ``qubit-clearance``, ``fillet-starved``): a
+            waiver for an accepted 1.5 um gap with ``min_value=1.5e-3`` does
+            not cover a 0.1 um gap later. ``max_value`` on these rules does
+            the opposite and triggers a warning.
 
     Example:
         Two flux lines cross couplings and are carried over on airbridges::
@@ -111,6 +128,12 @@ class Waiver:
             Waiver("carried over on an airbridge, see fab notes",
                    rule="metal-overlap", component_pattern="FLUX_D5",
                    max_value=400e-6)
+
+        An accepted narrow gap (smaller is worse, so bound it from below)::
+
+            Waiver("1.5 um gap accepted, see fab notes",
+                   rule="metal-spacing", components=("A", "B"),
+                   min_value=1.5e-3)
     """
 
     reason: str
@@ -118,6 +141,7 @@ class Waiver:
     components: tuple[str, ...] | None = None
     component_pattern: str | None = None
     max_value: float | None = None
+    min_value: float | None = None
 
     def __post_init__(self):
         if not str(self.reason).strip():
@@ -129,10 +153,25 @@ class Waiver:
             and self.components is None
             and self.component_pattern is None
             and self.max_value is None
+            and self.min_value is None
         ):
             raise ValueError(
                 "Waiver matches every finding; set rule, components, "
-                "component_pattern, or max_value"
+                "component_pattern, max_value or min_value"
+            )
+        if (
+            self.rule in LOWER_IS_WORSE_RULES
+            and self.max_value is not None
+            and self.min_value is None
+        ):
+            import warnings
+
+            warnings.warn(
+                f"Waiver for rule {self.rule!r} uses max_value, but a smaller "
+                "value is worse for this rule: max_value waives every worse "
+                "finding down to zero. Use min_value to bound it.",
+                UserWarning,
+                stacklevel=3,
             )
 
     def matches(self, finding: Finding) -> bool:
@@ -151,6 +190,11 @@ class Waiver:
             return False
         if self.max_value is not None:
             if finding.value is None or finding.value > self.max_value:
+                return False
+        if self.min_value is not None:
+            # 1e-9 design units of slack: a gap drawn at exactly the accepted
+            # value measures a few ulp smaller
+            if finding.value is None or finding.value < self.min_value - 1e-9:
                 return False
         return True
 
