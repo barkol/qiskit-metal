@@ -62,7 +62,7 @@ more fill). No MPI, no external binaries.
 |---|---|---|
 | empty 30×30×3 mm box, TM110 | 7.065 GHz | 7.066 GHz analytic |
 | with 0.5 mm Si, LSM110 | 6.487 GHz (h_max 0.8 mm) | 6.493 GHz analytic, 6.49 GHz paper |
-| qubit capacitance (P2) | 173.4–174.3 fF | 173.8 fF (paper fit) |
+| qubit capacitance (P2, quarter box, h_metal 0.07 mm) | 173.4–174.3 fF, not converged (qubit (0,0): 178.3 / 173.6 / 171.7 fF at h_metal 0.1 / 0.07 / 0.05 mm) | 173.8 fF (paper fit) |
 | EMF coupling amplitude A/2π | 15.63 MHz (quarter, h_metal 0.05 mm) | 15.6 MHz (paper) |
 | LSM210 amplitude | 51.6 MHz | 49.8 MHz (paper) |
 | four methods, 25 qubits, one mesh | max spread 4.1 %, mean 3.8 % | 4.8 %, 2.9 % (paper) |
@@ -80,8 +80,11 @@ full box port ROM, 26 ports × 4 moments: ~35–70 s.
   the same mesh.** N0 edge elements contain the gradients of P1 nodal
   functions exactly, so the static (charge) part of any mode is P1
   electrostatics. On a 0.1 mm mesh with zero-thickness paddles that is
-  ~230 fF against a converged 174 fF (sheet-edge singularities converge
-  slowly). Consequences: (a) a qubit with junction inductance `L` sits lower
+  ~230 fF against ~174 fF from P2 at h_metal = 0.07 mm (sheet-edge
+  singularities converge slowly). The P2 value is not converged either: it
+  decreases with refinement (178.3 / 173.6 / 171.7 fF for qubit (0,0) at
+  h_metal 0.1 / 0.07 / 0.05 mm), so the agreement of 4.43 with the paper's
+  173.8 fF holds at that mesh, not in the limit. Consequences: (a) a qubit with junction inductance `L` sits lower
   than `1/sqrt(L C_P2)`; (b) when comparing methods on one mesh, use
   `Electrostatics(mesh, order=1)` for the induced-EMF capacitance;
   (c) for absolute couplings, P2 capacitance with the N0 junction voltage
