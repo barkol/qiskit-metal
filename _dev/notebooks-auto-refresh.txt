@@ -48,14 +48,31 @@ docs/tut/2-From-components-to-chip/2.33-Add-my-QComponent-to-a-reusable-python-f
 # --- Section 3: GDS-only (gdstk, no Qt or Ansys) ---
 docs/tut/3-Renderers/3.1-Introduction-to-QRenderers.ipynb
 docs/tut/3-Renderers/3.2-Export-your-design-to-GDS.ipynb
+docs/tut/3-Renderers/3.4-How-do-I-make-my-custom-QRenderer.ipynb
 
 # --- Section 4: pure-Python analyses (no Ansys / Q3D / gmsh) ---
+# 4.04 and 4.05 load the bundled *_cmat.txt matrices (LOM 2.0, about 30 s
+# and 10 s headless); 4.15, the cQED and cross-resonance notebooks are
+# pure Python / QuTiP.
+docs/tut/4-Analysis/4.04-New-LOM-and-Fluxonium-Example.ipynb
+docs/tut/4-Analysis/4.05-New-LOM-and-Two-Coupled-Transmon-Example.ipynb
+docs/tut/4-Analysis/4.15-CPW-kappa-calculation.ipynb
 docs/tut/4-Analysis/4.31-Plot-quantum-oscillator-wavefunction.ipynb
 docs/tut/4-Analysis/4.32-Transmon-analytics-HCPB.ipynb
 docs/tut/4-Analysis/4.33-Transmon-analytics.ipynb
 docs/tut/4-Analysis/4.34-Transmon-qubit-CPB-hamiltonian-charge-basis.ipynb
 docs/tut/4-Analysis/4.41-The-package-mode-on-paper.ipynb
 docs/tut/4-Analysis/4.42-Four-ways-to-measure-a-coupling.ipynb
+docs/tut/4-Analysis/cQED-with-the-Jaynes-Cummings-Interaction-Model.ipynb
+docs/tut/4-Analysis/Design-and-Simulation-of-a-Cross-Resonance-Gate.ipynb
+
+# --- Appendix A reference designs and circuit examples (qm.view / headless GUI) ---
+docs/tut/full-design-examples/A.1-Transmon-with-readout-resonator.ipynb
+docs/tut/full-design-examples/A.2-Two-coupled-transmons.ipynb
+docs/tut/full-design-examples/A.3-Four-qubit-multiplexed-readout.ipynb
+docs/circuit-examples/D.Qubit-couplers/31-TwoCrossmonsTunableCoupler.ipynb
+docs/circuit-examples/D.Qubit-couplers/32-TwoTransmonsDirectCoupling.ipynb
+docs/circuit-examples/D.Qubit-couplers/33-TwoTransmonsWithMeander.ipynb
 
 # ============================================================================
 # External-gated (🟡) — NEVER auto-run. Reference list only. Maintainer
@@ -67,10 +84,7 @@ docs/tut/4-Analysis/4.42-Four-ways-to-measure-a-coupling.ipynb
 #   docs/tut/4-Analysis/4.01-Capacitance-and-LOM.ipynb
 #   docs/tut/4-Analysis/4.02-Eigenmode-and-EPR.ipynb
 #   docs/tut/4-Analysis/4.03-Impedance.ipynb
-#   docs/tut/4-Analysis/4.04-New-LOM-and-Fluxonium-Example.ipynb
-#   docs/tut/4-Analysis/4.05-New-LOM-and-Two-Coupled-Transmon-Example.ipynb
-#   docs/tut/4-Analysis/4.05-New-LOM-and-Two-Coupled-Transmon-Example-with-sequence.ipynb
-#   docs/tut/4-Analysis/4.11..4.18 (all Analyze-* notebooks)
+#   docs/tut/4-Analysis/4.11..4.18 (all Analyze-* notebooks except 4.15, which is pure Python)
 #   docs/tut/4-Analysis/4.21..4.23 (all matrix sweeps)
 #   docs/tut/4-Analysis/pyaedt-multiplanar/*.ipynb (layout cells run anywhere;
 #     cells tagged requires-ansys are kept without outputs)
@@ -81,7 +95,6 @@ docs/tut/4-Analysis/4.42-Four-ways-to-measure-a-coupling.ipynb
 #     skips the requires-ansys cells)
 #
 # gmsh + Linux X libs:
-#   docs/tut/3-Renderers/3.4-How-do-I-make-my-custom-QRenderer.ipynb
 #   docs/tut/3-Renderers/3.5-Render-your-design-to-Gmsh.ipynb
 #   docs/tut/4-Analysis/4.19-Analyze-a-transmon-using-ElmerFEM.ipynb
 #   docs/circuit-examples/F.Small-quantum-chips/54-Wallraff_TwoQubit_Cell_Mesh.ipynb
@@ -91,6 +104,6 @@ docs/tut/4-Analysis/4.42-Four-ways-to-measure-a-coupling.ipynb
 #   docs/tut/4-Analysis/4.44-Every-coupling-from-one-eigenmode.ipynb
 #   docs/tut/4-Analysis/4.45-Four-methods-one-full-wave-model.ipynb
 #
-# Cross-Resonance + cQED — depend on Ansys exports:
-#   docs/tut/4-Analysis/cQED-with-the-Jaynes-Cummings-Interaction-Model.ipynb
-#   docs/tut/4-Analysis/Design-and-Simulation-of-a-Cross-Resonance-Gate.ipynb
+# Extra Python package not in any extra:
+#   docs/tut/4-Analysis/4.05-New-LOM-and-Two-Coupled-Transmon-Example-with-sequence.ipynb
+#     (needs `sequencing`, which does not run on QuTiP 5; outputs kept)
