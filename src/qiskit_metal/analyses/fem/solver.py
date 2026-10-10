@@ -282,12 +282,16 @@ def mesh_package(
         probe: optional (x, y) of a vertical wire port from floor to lid.
         pads: set False to leave the paddles (and junctions) out.
         substrate: set False to leave the silicon out (empty box).
-        threads: number of meshing threads. ``None`` (default) uses all
-            cores; the parallel 3D mesher (HXT) is then not deterministic,
+        threads: number of meshing threads. ``None`` (default) sets
+            ``General.NumThreads = 0`` (all cores) and leaves the gmsh options
+            ``Mesh.MaxNumThreads1D/2D/3D`` as they are, as before this option
+            existed; with all cores the parallel 3D mesher (HXT) is not deterministic,
             so meshing the same package twice gives slightly different
             meshes and results (of the order of the discretization error).
             ``threads=1`` gives identical meshes for identical input, for
-            convergence studies and tests, at the cost of meshing time.
+            convergence studies and tests, at the cost of meshing time. A
+            caller that initialized gmsh and limited ``Mesh.MaxNumThreads3D``
+            (and 1D/2D) to 1 keeps that limit with ``threads=None``.
     """
     import gmsh
 
@@ -405,10 +409,16 @@ def mesh_package(
         "Mesh.LcIntegrationPrecision", 1e-3
     )  # the default 1e-9 makes 1D meshing crawl
     gmsh.option.setNumber("Mesh.Algorithm3D", 10)  # HXT: fast, parallel
-    n_threads = 0 if threads is None else int(threads)  # 0: all cores
-    gmsh.option.setNumber("General.NumThreads", n_threads)
-    for dim in (1, 2, 3):
-        gmsh.option.setNumber(f"Mesh.MaxNumThreads{dim}D", n_threads)
+    if threads is None:
+        # as before: all cores for the general thread pool, and the
+        # per-dimension limits (Mesh.MaxNumThreads*D) left as the caller set
+        # them, so a caller's single-thread setting still applies
+        gmsh.option.setNumber("General.NumThreads", 0)
+    else:
+        n_threads = int(threads)
+        gmsh.option.setNumber("General.NumThreads", n_threads)
+        for dim in (1, 2, 3):
+            gmsh.option.setNumber(f"Mesh.MaxNumThreads{dim}D", n_threads)
     start = time.time()
     gmsh.model.mesh.generate(3)
     mesh_time = time.time() - start

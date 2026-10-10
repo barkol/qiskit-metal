@@ -185,3 +185,44 @@ class TestPackageFromDesignErrors(unittest.TestCase):
         with self.assertWarnsRegex(UserWarning, "Q1.rect_pk"):
             package = package_from_design(multi, 11.45)
         self.assertEqual(sorted(package.metals), ["Q1.pad_bot", "Q1.pad_top"])
+
+
+@unittest.skipUnless(_fem_available(), "gmsh and scikit-fem not installed")
+class TestMeshKeepsCallerThreadLimits(unittest.TestCase):
+    """mesh_package(threads=None) leaves the caller's per-dimension gmsh
+    thread limits alone, so a single-thread setup stays reproducible
+    (MPK: fem_mesh_threads_default)."""
+
+    def tearDown(self):
+        import gmsh
+
+        if gmsh.isInitialized():
+            gmsh.finalize()
+
+    def test_single_thread_limits_survive_default_call(self):
+        import gmsh
+
+        from qiskit_metal.analyses.fem import Package, mesh_package
+
+        def rect(x0, y0, w, h):
+            return np.array([(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h)])
+
+        pkg = Package(
+            4.0,
+            4.0,
+            3.0,
+            0.5,
+            11.45,
+            {"pad_a": rect(1.5, 1.4, 1.0, 0.5), "pad_b": rect(1.5, 2.1, 1.0, 0.5)},
+            {"Q": ((2.0, 1.9), (2.0, 2.1))},
+        )
+        if not gmsh.isInitialized():
+            gmsh.initialize()
+        limits = {f"Mesh.MaxNumThreads{d}D": 1 for d in (1, 2, 3)}
+        for name, value in limits.items():
+            gmsh.option.setNumber(name, value)
+        meshes = [mesh_package(pkg, h_metal=0.05, h_max=0.8) for _ in range(2)]
+        for name, value in limits.items():
+            self.assertEqual(gmsh.option.getNumber(name), value, msg=name)
+        np.testing.assert_array_equal(meshes[0].p, meshes[1].p)
+        np.testing.assert_array_equal(meshes[0].t, meshes[1].t)
