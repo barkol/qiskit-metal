@@ -390,3 +390,44 @@ class TestAnalyzeLoadedTLShortedSmooth(unittest.TestCase):
         self.assertAlmostEqual(q["Q"] / q_expected, 1.0, places=10)
         self.assertEqual(q["_cl"], 0.0)
         self.assertEqual(phi_zpf["_cl"], np.inf)
+
+
+class TestTransmonMathieu(unittest.TestCase):
+    """Hcpb_analytic and transmon_eigenvalue agree with the charge-basis
+    Hcpb for every level and offset charge (#1220)."""
+
+    ej, ec = 13622.0, 298.0
+
+    def _reference(self, ng):
+        from qiskit_metal.analyses.hamiltonian.transmon_charge_basis import Hcpb
+
+        ref = Hcpb(nlevels=15, Ej=self.ej, Ec=self.ec, ng=ng)
+        return np.array([ref.evalue_k(k) for k in range(5)])
+
+    def test_hcpb_analytic_matches_charge_basis(self):
+        from qiskit_metal.analyses.hamiltonian.transmon_CPB_analytic import (
+            Hcpb_analytic,
+        )
+
+        for ng in (0.0, 0.5, -0.5, 0.25, -0.3, 1.1):
+            ref = self._reference(ng)
+            ana = np.array(
+                [Hcpb_analytic(Ej=self.ej, Ec=self.ec, ng=ng).evalue_k(k) for k in range(5)]
+            )
+            np.testing.assert_allclose(ana, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}")
+
+    def test_transmon_eigenvalue_explicit_parameters(self):
+        from qiskit_metal.analyses.hamiltonian import transmon_analytics as ta
+
+        for ng in (0.0, 0.25, 0.5):
+            ref = self._reference(ng)
+            val = [
+                ta.transmon_eigenvalue(m, ng, Ej_over_Ec=self.ej / self.ec, Ec=self.ec)
+                for m in range(5)
+            ]
+            np.testing.assert_allclose(val, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}")
+        # transmon frequency: E_1 - E_0 = 5382.43 MHz (the even-only rule gave E_2 - E_0)
+        f01 = ta.transmon_eigenvalue(1, 0.0, self.ej / self.ec, self.ec) - ta.transmon_eigenvalue(
+            0, 0.0, self.ej / self.ec, self.ec
+        )
+        self.assertAlmostEqual(f01, 5382.43, places=1)

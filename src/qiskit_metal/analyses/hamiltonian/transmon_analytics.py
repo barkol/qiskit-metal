@@ -20,9 +20,10 @@ Key References:
 
 """
 
-from scipy.special import mathieu_a
 import numpy as np
 import matplotlib.pyplot as plt
+
+from qiskit_metal.analyses.hamiltonian.transmon_CPB_analytic import transmon_level
 
 __all__ = ["kidx", "kidx_raw", "plot_eigenvalues", "transmon_eigenvalue"]
 
@@ -74,7 +75,7 @@ RATIO = 1.0
 E_C = 1.0
 
 
-def transmon_eigenvalue(m, my_ng):
+def transmon_eigenvalue(m, my_ng, Ej_over_Ec=None, Ec=None):
     """
     This function calculate the energy eigenvalue of the transmon qubit for a given
     energy level (m) and offset charge (my_ng). The input values are first used to
@@ -84,56 +85,37 @@ def transmon_eigenvalue(m, my_ng):
         Args:
             m (int): The energy level of the qubit (m=0,1,2,3,etc.)
             ng (float): the offset charge of the Josephjunction island (in units of 2e)
+            Ej_over_Ec (float): E_J/E_C; defaults to the module constant ``RATIO``
+            Ec (float): E_C, sets the energy unit; defaults to the module
+                constant ``E_C``
 
         Returns:
             float: the calculated energy eigenvalue.
+
+    Odd levels use the odd Mathieu characteristic value ``b`` and any ``ng``
+    gives a finite result (see :func:`.transmon_CPB_analytic.transmon_level`).
     """
-    index = kidx(m, my_ng)
-    return (E_C) * mathieu_a(index, -0.5 * RATIO)
+    ratio = RATIO if Ej_over_Ec is None else Ej_over_Ec
+    ec = E_C if Ec is None else Ec
+    return transmon_level(m, ratio * ec, ec, my_ng)
 
 
 # extremely coarse grid: only three points from -0.5 to 0.5. This so that only integer values
 # of the index are used in the calculation of the Mathieu characteristic value.
 ng = np.linspace(-0.5, 0.5, 3)
 
-# ng is periodic extending from -2 to 2:
-ng_periodic = np.linspace(-2.0, 2.0, 9)
+# levels on a dense offset-charge grid over two periods (Koch et al., Fig. 2)
+ng_periodic = np.linspace(-2.0, 2.0, 201)
 
-# define energies between (-0.5, 0.5) as empty lists.
-E0 = []
-E1 = []
-E2 = []
-E3 = []
+E0 = [transmon_eigenvalue(0, i) for i in ng]
+E1 = [transmon_eigenvalue(1, i) for i in ng]
+E2 = [transmon_eigenvalue(2, i) for i in ng]
+E3 = [transmon_eigenvalue(3, i) for i in ng]
 
-# define periodic energies between (-2.0, 2.0)
-E0_periodic = [None] * 9
-E1_periodic = [None] * 9
-E2_periodic = [None] * 9
-E3_periodic = [None] * 9
-
-# calculate the energies for m=0,1,2 at each value of offset charge
-for i in ng:
-    E0.append(transmon_eigenvalue(0, i))
-    E1.append(transmon_eigenvalue(1, i))
-    E2.append(transmon_eigenvalue(2, i))
-    E3.append(transmon_eigenvalue(3, i))
-
-# define the periodic eigen energies based on the values between (-0.5,0.5)
-for i in range(len(E0_periodic)):
-    E0_periodic[0] = E0[1]
-    E0_periodic[1] = E0[0]
-    E1_periodic[0] = E1[1]
-    E1_periodic[1] = E1[0]
-    E2_periodic[0] = E2[1]
-    E2_periodic[1] = E2[0]
-    E3_periodic[0] = E3[1]
-    E3_periodic[1] = E3[0]
-
-    if i > 1:
-        E0_periodic[i] = E0_periodic[i - 2]
-        E1_periodic[i] = E1_periodic[i - 2]
-        E2_periodic[i] = E2_periodic[i - 2]
-        E3_periodic[i] = E3_periodic[i - 2]
+E0_periodic = [transmon_eigenvalue(0, i) for i in ng_periodic]
+E1_periodic = [transmon_eigenvalue(1, i) for i in ng_periodic]
+E2_periodic = [transmon_eigenvalue(2, i) for i in ng_periodic]
+E3_periodic = [transmon_eigenvalue(3, i) for i in ng_periodic]
 
 
 def plot_eigenvalues():
