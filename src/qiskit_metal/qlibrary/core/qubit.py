@@ -42,6 +42,10 @@ class BaseQubit(QComponent):
 
     TOOLTIP = """Qubit"""
 
+    # merged into options.connection_pads at construction; to_script() emits
+    # them as part of options
+    _to_script_folded_params = ("options_connection_pads",)
+
     def __init__(
         self,
         design,

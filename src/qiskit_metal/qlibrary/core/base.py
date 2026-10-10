@@ -622,6 +622,8 @@ gui = MetalGUI(design)
         ## setting up component-specific args
         # get init from child?
         to_ignore = {"self", "name", "design", "make", "kwargs", "options", "args"}
+        # constructor arguments folded into ``options`` (already emitted above)
+        to_ignore |= set(getattr(self, "_to_script_folded_params", ()))
         class_signature = signature(self.__class__.__init__)
 
         failed = set()

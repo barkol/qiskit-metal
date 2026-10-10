@@ -400,3 +400,18 @@ class TestNumpyArrayImport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestNoSpuriousWarning(unittest.TestCase):
+    """Constructor arguments folded into options are not reported as
+    missing (#1227)."""
+
+    def test_qubit_with_pads_has_no_warning(self):
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        TransmonPocket(
+            d, "Q1", options=dict(connection_pads=dict(a=dict(loc_W=1, loc_H=1)))
+        )
+        script = d.to_python_script()
+        self.assertNotIn("failed to have a value", script)
+        self.assertIn("connection_pads", script)
