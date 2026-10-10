@@ -529,3 +529,77 @@ class TestFitTransmissionConsistent(unittest.TestCase):
         self.assertAlmostEqual(raw[0] * np.exp(1j * raw[1]), vals[0], places=12)
         self.assertAlmostEqual(raw[6], vals[-1].real, places=20)
         self.assertEqual(cov.shape, (7, 7))
+
+
+class TestLom1BusBusPurcell(unittest.TestCase):
+    """LOM 1.0: resonator-resonator coupling, Purcell T1 from the given Q,
+    Z0 arguments (#1222)."""
+
+    # order: bus1, ground, pad1, pad2, readout (fF)
+    cmat = (
+        np.array(
+            [
+                [60.0, -40.0, -8.0, -1.0, -0.5],
+                [-40.0, 300.0, -30.0, -40.0, -5.0],
+                [-8.0, -30.0, 110.0, -60.0, -20.0],
+                [-1.0, -40.0, -60.0, 120.0, -10.0],
+                [-0.5, -5.0, -20.0, -10.0, 60.0],
+            ]
+        )
+        * 1e-15
+    )
+    ic = 2.067833848e-15 / (2 * np.pi * 12e-9)
+
+    def _run(self, **kwargs):
+        from qiskit_metal.analyses.quantization.lumped_capacitive import (
+            extract_transmon_coupled_Noscillator,
+        )
+
+        return extract_transmon_coupled_Noscillator(
+            self.cmat, self.ic, 2e-15, 2, [6.0], 7.0, **kwargs
+        )
+
+    def test_busbus_matches_lc_resonators(self):
+        hd = self._run()
+        c = self.cmat
+        wr = 2 * np.pi * np.array([7.0, 6.0]) * 1e9
+        cr = 0.5 * np.pi / (wr * 50.0)
+        cbus = np.array([[-c[q, b] for b in (4, 0)] for q in (2, 3)])
+        c1s = -c[2, 1] + cbus[0].sum()
+        c2s = -c[3, 1] + cbus[1].sum()
+        cbb = -c[4, 0]
+        tcs = [
+            cr[i] - cbus[:, i].sum() ** 2 / (c1s + c2s) + cbus[:, i].sum() + cbb
+            for i in range(2)
+        ]
+        t12 = cbb + cbus[:, 0].sum() * cbus[:, 1].sum() / (c1s + c2s)
+        g = 0.5 * t12 / np.sqrt(tcs[0] * tcs[1]) * np.sqrt(wr[0] * wr[1]) / (2e6 * np.pi)
+        self.assertAlmostEqual(hd["gbusbus"][0, 1] / g, 1.0, places=10)
+        self.assertAlmostEqual(hd["gbusbus"][0, 1], 12.249, places=2)
+        self.assertEqual(hd["gbusbus"][0, 0], 0.0)
+
+    def test_purcell_from_given_q(self):
+        self.assertNotIn("T1", self._run())
+        q = [2e4, 3e5]
+        hd = self._run(Q_res=q)
+        wq = 2 * np.pi * hd["fQ"] * 1e9
+        wr = 2 * np.pi * np.array([7.0, 6.0]) * 1e9
+        g = 2 * np.pi * np.asarray(hd["gbus"]) * 1e6
+        kappa = wr / np.array(q)
+        koch = (wq - wr) ** 2 / (kappa * g**2)
+        expected = koch * ((wq + wr) / (2 * wq)) ** 2
+        np.testing.assert_allclose(hd["T1bus"], expected, rtol=1e-10)
+        self.assertAlmostEqual(hd["T1"], 1 / np.sum(1 / expected), delta=1e-12)
+
+    def test_z0_argument(self):
+        from qiskit_metal.analyses.quantization.lumped_capacitive import chargeline_T1
+
+        self.assertAlmostEqual(
+            chargeline_T1(0.1e-15, 65e-15, 5.38e9, Z0=25.0)
+            / chargeline_T1(0.1e-15, 65e-15, 5.38e9),
+            2.0,
+            places=12,
+        )
+        g50 = self._run()["gbus"][0]
+        g25 = self._run(Z0=25.0)["gbus"][0]
+        self.assertNotAlmostEqual(g50, g25, places=3)

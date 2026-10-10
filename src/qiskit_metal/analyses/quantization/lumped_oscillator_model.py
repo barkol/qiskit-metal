@@ -39,6 +39,11 @@ class LOManalysis(QAnalysis):
           resonator in the order [readout, bus1, bus2, ...]; 1 (or True) for a
           quarter-wave resonator, 0 for a half-wave one. None (default) treats
           all resonators as half-wave.
+        * Q_res (float, list or None): Loaded quality factors of the
+          resonators [readout, bus1, ...] for the Purcell T1 (``T1``,
+          ``T1bus`` in the result). None (default): no Purcell T1.
+        * Z0 (float): Characteristic impedance of the resonators (in Ohm).
+          Defaults to 50.
 
     Data Labels:
         * lumped_oscillator (pd.DataFrame): Lumped oscillator result at the last simulation pass
@@ -52,6 +57,8 @@ class LOManalysis(QAnalysis):
         freq_readout=7.0,
         freq_bus=[6.0, 6.2],
         res_L4_corr=None,
+        Q_res=None,
+        Z0=50.0,
     )
     """Default setup."""
 
@@ -195,6 +202,8 @@ class LOManalysis(QAnalysis):
                 fbus,
                 fread,
                 res_L4_corr=s.get("res_L4_corr"),
+                Q_res=s.get("Q_res"),
+                Z0=s.get("Z0") or 50.0,
                 g_scale=1,
                 print_info=bool(idx_cmat == len(self.sim.capacitance_all_passes)),
             )
