@@ -385,7 +385,9 @@ class TestAnalyzeLoadedTLShortedSmooth(unittest.TestCase):
         e_line = 0.5 * c * (length / 2 - np.sin(2 * k * length) / (4 * k))
         e_cap = 0.5 * cap * np.sin(k * length) ** 2
         q_expected = np.sqrt(hbar * w / 2 * cap * e_cap / (e_line + e_cap))
-        q, phi_zpf, _, ltl = analyze_loaded_tl(fr, self.vp, z0, {"Q": 50.0}, shorted=True)
+        q, phi_zpf, _, ltl = analyze_loaded_tl(
+            fr, self.vp, z0, {"Q": 50.0}, shorted=True
+        )
         self.assertAlmostEqual(ltl / length, 1.0, places=12)
         self.assertAlmostEqual(q["Q"] / q_expected, 1.0, places=10)
         self.assertEqual(q["_cl"], 0.0)
@@ -412,9 +414,14 @@ class TestTransmonMathieu(unittest.TestCase):
         for ng in (0.0, 0.5, -0.5, 0.25, -0.3, 1.1):
             ref = self._reference(ng)
             ana = np.array(
-                [Hcpb_analytic(Ej=self.ej, Ec=self.ec, ng=ng).evalue_k(k) for k in range(5)]
+                [
+                    Hcpb_analytic(Ej=self.ej, Ec=self.ec, ng=ng).evalue_k(k)
+                    for k in range(5)
+                ]
             )
-            np.testing.assert_allclose(ana, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}")
+            np.testing.assert_allclose(
+                ana, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}"
+            )
 
     def test_transmon_eigenvalue_explicit_parameters(self):
         from qiskit_metal.analyses.hamiltonian import transmon_analytics as ta
@@ -425,11 +432,13 @@ class TestTransmonMathieu(unittest.TestCase):
                 ta.transmon_eigenvalue(m, ng, Ej_over_Ec=self.ej / self.ec, Ec=self.ec)
                 for m in range(5)
             ]
-            np.testing.assert_allclose(val, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}")
+            np.testing.assert_allclose(
+                val, ref, rtol=1e-9, atol=1e-6, err_msg=f"ng={ng}"
+            )
         # transmon frequency: E_1 - E_0 = 5382.43 MHz (the even-only rule gave E_2 - E_0)
-        f01 = ta.transmon_eigenvalue(1, 0.0, self.ej / self.ec, self.ec) - ta.transmon_eigenvalue(
-            0, 0.0, self.ej / self.ec, self.ec
-        )
+        f01 = ta.transmon_eigenvalue(
+            1, 0.0, self.ej / self.ec, self.ec
+        ) - ta.transmon_eigenvalue(0, 0.0, self.ej / self.ec, self.ec)
         self.assertAlmostEqual(f01, 5382.43, places=1)
 
 
@@ -475,8 +484,12 @@ class TestHcpbParamsFromSpectrum(unittest.TestCase):
         loop_ref = ref[0, 1] * ref[1, 2] * ref[2, 0]
         self.assertLess(loop_ref, -0.03)
         self.assertAlmostEqual(n[0, 1] * n[1, 2] * n[2, 0], loop_ref, places=12)
-        np.testing.assert_allclose(np.abs(n), np.abs(ref - np.diag(np.diag(ref))), atol=1e-12)
-        self.assertAlmostEqual(h.n_ij(0, 2, signed=True) ** 2, ref[0, 2] ** 2, places=12)
+        np.testing.assert_allclose(
+            np.abs(n), np.abs(ref - np.diag(np.diag(ref))), atol=1e-12
+        )
+        self.assertAlmostEqual(
+            h.n_ij(0, 2, signed=True) ** 2, ref[0, 2] ** 2, places=12
+        )
         self.assertGreaterEqual(h.n_ij(0, 2), 0.0)
 
 
@@ -502,7 +515,12 @@ class TestFitTransmissionConsistent(unittest.TestCase):
 
         ql = 1 / (1 / self.qc + 1 / self.qi)
         linewidth = self.fr / ql
-        for n_lw, tau, phi in [(2, 0.0, 0.15), (6, 0.0, 0.15), (50, 30e-9, 0.3), (6, 40e-9, -0.2)]:
+        for n_lw, tau, phi in [
+            (2, 0.0, 0.15),
+            (6, 0.0, 0.15),
+            (50, 30e-9, 0.3),
+            (6, 40e-9, -0.2),
+        ]:
             f = np.linspace(self.fr - n_lw * linewidth, self.fr + n_lw * linewidth, 801)
             s = _notch_general(f, 0.8, 0.4, tau, ql, self.qc, self.fr, phi)
             for detrend in (True, False):
@@ -511,7 +529,14 @@ class TestFitTransmissionConsistent(unittest.TestCase):
                 p, _ = fit_transmission(f, s, plot=False, detrend=detrend)
                 a = p["amplitude_complex"]
                 rec = _notch_general(
-                    f, abs(a), np.angle(a), p["delay"], p["Qr"], p["Qc"], p["fr"], p["phi0"]
+                    f,
+                    abs(a),
+                    np.angle(a),
+                    p["delay"],
+                    p["Qr"],
+                    p["Qc"],
+                    p["fr"],
+                    p["phi0"],
                 )
                 msg = f"+-{n_lw} linewidths, tau={tau}, detrend={detrend}"
                 self.assertLess(np.max(abs(s - rec)), 1e-3, msg=msg)
@@ -573,7 +598,13 @@ class TestLom1BusBusPurcell(unittest.TestCase):
             for i in range(2)
         ]
         t12 = cbb + cbus[:, 0].sum() * cbus[:, 1].sum() / (c1s + c2s)
-        g = 0.5 * t12 / np.sqrt(tcs[0] * tcs[1]) * np.sqrt(wr[0] * wr[1]) / (2e6 * np.pi)
+        g = (
+            0.5
+            * t12
+            / np.sqrt(tcs[0] * tcs[1])
+            * np.sqrt(wr[0] * wr[1])
+            / (2e6 * np.pi)
+        )
         self.assertAlmostEqual(hd["gbusbus"][0, 1] / g, 1.0, places=10)
         self.assertAlmostEqual(hd["gbusbus"][0, 1], 12.249, places=2)
         self.assertEqual(hd["gbusbus"][0, 0], 0.0)
@@ -603,3 +634,27 @@ class TestLom1BusBusPurcell(unittest.TestCase):
         g50 = self._run()["gbus"][0]
         g25 = self._run(Z0=25.0)["gbus"][0]
         self.assertNotAlmostEqual(g50, g25, places=3)
+
+
+class TestLumpedCPW(unittest.TestCase):
+    """lumped_cpw returns L, C, Z0 and eps_eff of one consistent line
+    (MPK: lumped_cpw)."""
+
+    def test_consistent_line(self):
+        from qiskit_metal.analyses.em.cpw_calculations import c0, lumped_cpw
+
+        for t in (0.0, 200e-9):
+            _, lext, cap, _, z0, eps, _ = lumped_cpw(7e9, 10e-6, 6e-6, 500e-6, t)
+            self.assertAlmostEqual(np.sqrt(eps / (lext * cap)) / c0, 1.0, places=9)
+            self.assertAlmostEqual(np.sqrt(lext / cap) / z0, 1.0, places=9)
+
+    def test_thickness_correction(self):
+        from qiskit_metal.analyses.em.cpw_calculations import lumped_cpw
+
+        z_0 = lumped_cpw(7e9, 10e-6, 6e-6, 500e-6, 0.0)[4]
+        z_tiny = lumped_cpw(7e9, 10e-6, 6e-6, 500e-6, 1e-12)[4]
+        z_200 = lumped_cpw(7e9, 10e-6, 6e-6, 500e-6, 200e-9)[4]
+        self.assertAlmostEqual(z_tiny / z_0, 1.0, places=5)
+        # a thicker film lowers Z0 (wider strip, narrower gaps): 49.3 Ohm,
+        # it was 51.6 Ohm with the t = 0 moduli and the film-corrected eps_eff
+        self.assertAlmostEqual(z_200, 49.25, places=1)

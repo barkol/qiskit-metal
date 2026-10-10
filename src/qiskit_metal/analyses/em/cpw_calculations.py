@@ -68,7 +68,7 @@ def guided_wavelength(
     Tuple contents:
         * lambdaG: The guided wavelength of the CPW based on the input parameters, in meters.
           This value is for a full wavelength. Divide by 2 for a lambda/2 resonator, 4 for a lambda/4.
-        * etfSqrt: Effective dielectric constant (accounting for film thickness)
+        * etfSqrt: Square root of the effective dielectric constant (accounting for film thickness)
         * q: Filling factor
     """
 
@@ -115,7 +115,7 @@ def lumped_cpw(
         dielectric_constant (float, optional): The relative permittivity of the substrate.
             Defaults to 11.45, the value for silicon at cryogenic temperatures.
         loss_tangent (float, optional): The loss tangent of the dielectric.
-            Defaults to 10**-6, reasonable quality silicon.
+            Defaults to 10**-5, reasonable quality silicon.
         london_penetration_depth (float, optional): The superconducting london penetration depth, in meters.
             It is advised to use the temperature and film thickness dependent value. If circuit
             geometries are on the scale of the Pearl Length, the kinetic inductance formulas
@@ -126,13 +126,27 @@ def lumped_cpw(
         tuple: Contents outlined below
 
     Tuple contents:
-        * Lk (float): The series kinetic inductance, in Henries.
-        * Lext (float): The series geometric external inductance, in Henries.
-        * C (float): The shunt capacitance, in Farads.
-        * G (float): The shunt admittance, in Siemens. #NOTE:double check if right units
-        * Z0 (float): sqrt(L / C)
-        * etfSqrt**2: Effective Dielectric Constant
-        * Cstar: External Inductance
+        * Lk (float): The series kinetic inductance per unit length, in H/m.
+        * Lext (float): The series geometric (external) inductance per unit
+          length, in H/m: ``Z0 sqrt(eps_eff) / c``.
+        * C (float): The shunt capacitance per unit length, in F/m:
+          ``sqrt(eps_eff) / (c Z0)``.
+        * G (float): The shunt conductance per unit length, in S/m.
+        * Z0 (float): Characteristic impedance ``sqrt(Lext / C)``, in Ohm.
+        * etfSqrt**2: Effective dielectric constant ``eps_eff`` (film
+          thickness and dispersion included).
+        * Cstar: Capacitance per unit length of the conformal-mapping
+          formula with ``eps_eff`` in place of the substrate permittivity
+          (kept for backward compatibility).
+
+    ``Lext`` and ``C`` are computed from the same ``Z0`` and ``eps_eff``, so
+    ``1/sqrt(Lext C) = c/sqrt(eps_eff)`` and ``sqrt(Lext/C) = Z0``. For a
+    film of thickness ``t > 0``, ``Z0`` uses the conductor-width correction
+    of the conformal-mapping moduli (strip ``s + Delta``, gaps ``w - Delta``,
+    ``Delta = 1.25 t / pi (1 + ln(4 pi s / t))``; K. C. Gupta et al.,
+    *Microstrip Lines and Slotlines*, 2nd ed., Sec. 7.3), consistent with
+    the film-corrected ``eps_eff``. Internally ``s`` is the strip width and
+    ``w`` the gap width (Simons' S and W).
 
     ::
 
@@ -153,20 +167,25 @@ def lumped_cpw(
 
     Kk0, Kk01, Kk1, Kk11 = elliptic_int_constants(s, w, h)
 
-    C = 2 * e0 * (eRD - 1) * (Kk1 / Kk11) + 4 * e0 * (Kk0 / Kk01)
-
     # filling factor
     q = 0.5 * (Kk1 * Kk01) / (Kk11 * Kk0)
-
-    # Admittance
-    G = wfreq * C * q * tanD
 
     # Effective Dielectric Constant
     etfSqrt = effective_dielectric_constant(freq, s, w, h, t, q, Kk0, Kk01, eRD)
 
-    # External Inducatance
-    Z0 = (30 * np.pi / etfSqrt) * Kk01 / Kk0
-    Lext = Z0**2 * C
+    # Characteristic impedance; a film of thickness t widens the strip and
+    # narrows the gaps by Delta in the conformal-mapping moduli (Gupta).
+    if t > 0:
+        delta = 1.25 * t / np.pi * (1 + np.log(4 * np.pi * s / t))
+        k0e = (s + delta) / (s + delta + 2 * (w - delta))
+        Kk0e, Kk01e = ellipk(k0e**2), ellipk(1 - k0e**2)
+    else:
+        Kk0e, Kk01e = Kk0, Kk01
+    Z0 = (30 * np.pi / etfSqrt) * Kk01e / Kk0e
+    # Per-unit-length L and C from the same Z0 and eps_eff
+    Lext = Z0 * etfSqrt / c0
+    C = etfSqrt / (c0 * Z0)
+    G = wfreq * C * q * tanD
     Cstar = 2 * e0 * (etfSqrt**2 - 1) * (Kk1 / Kk11) + 4 * e0 * (Kk0 / Kk01)
 
     # Kinetic Inductance

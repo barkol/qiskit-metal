@@ -88,12 +88,14 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
     def test_analyses_cpw_lumped_cpw(self):
         """Test the functionality of lumped_cpw in cpw_calculations.py."""
         # Setup expected test results
+        # Lext, C and Z0 changed with the film-thickness correction and the
+        # consistent L/C of lumped_cpw (MPK: lumped_cpw)
         expected = (
             0.04160856394637145,
-            3.7752144497164426e-07,
-            2.9513334836287544e-11,
+            3.6289058906074556e-07,
+            3.0661260873047795e-11,
             0.0,
-            113.09975672923031,
+            108.79096967346163,
             1.0000000003871512,
             2.9513334836287544e-11,
         )
