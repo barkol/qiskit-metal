@@ -57,8 +57,16 @@ class CoupledLineTee(QComponent):
         * down_length: '100um' -- The length of the hanging part of the resonator, including the curved region
         * fillet: '25um'
         * mirror: False -- Flips the hanger around the y-axis
-        * open_termination: True -- sets if the termination of the second line at the coupling side
-          is an open to ground or short to ground
+        * open_termination: True -- end condition of the secondary line at the coupler.
+          True: the trace ends in a gap of ``second_gap`` (open end; with the far end
+          also open, a lambda/2 resonator coupled mainly capacitively). False: the
+          trace touches the ground plane (shorted end; a lambda/4 hanger resonator
+          coupled mainly inductively, at its current antinode), as in tutorials
+          A.1-A.4 and 4.18.
+
+    The secondary line (``coupling_length`` + ``down_length``) is part of the
+    resonator: a route attached to ``second_end`` must be shorter than the
+    resonator length by this amount (plus any stub on the far end).
     """
 
     component_metadata = Dict(short_name="cpw", _qgeometry_table_path="True")
