@@ -326,3 +326,22 @@ class TestFitTransmission(unittest.TestCase):
             num = (_lorentz_func(freq, *up) - _lorentz_func(freq, *dn)) / (2 * h)
             err = np.max(abs(num - jac[:, k])) / np.max(abs(num))
             self.assertLess(err, 1e-5, msg=f"parameter {k}")
+
+
+class TestAnalyzeLoadedTLInput(unittest.TestCase):
+    """analyze_loaded_tl leaves the caller's cap_loading dict unchanged."""
+
+    def test_cap_loading_not_mutated(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+
+        vp = 299792458.0 / np.sqrt(6.065)
+        for loading, shorted in (
+            ({"Q": 50.0}, True),
+            ({"Q": 50.0}, False),
+            ({"a": 20.0, "b": 30.0}, False),
+        ):
+            before = dict(loading)
+            analyze_loaded_tl(7000.0, vp, 50.0, loading, shorted=shorted)
+            self.assertEqual(loading, before)
