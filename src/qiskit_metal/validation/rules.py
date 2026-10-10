@@ -21,8 +21,8 @@ References
    minimum CPW gap (R1), minimum same-layer metal spacing (R8) and
    ground-plane continuity (R9) defaults below are taken from it.
 .. [DesignConcerns] "A Review of Design Concerns in Superconducting Quantum
-   Circuits", arXiv:2411.16967. Background on crosstalk mechanisms and the
-   sub-lambda/4 airbridge spacing convention.
+   Circuits", arXiv:2411.16967. Background on crosstalk mechanisms and
+   airbridges.
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ class MetalOverlapRule(DesignRule):
 
     Overlapping drawn metal on the same layer is a short. This is the check
     that catches a route crossing another route, or a route running through
-    a qubit pad.
+    a qubit pad. Shapes of one component are not compared with each other.
 
     Distinguishing a genuine overlap from two features that merely touch at
     a shared pin needs a tolerance: an abutment has ~zero area, a real
@@ -146,6 +146,8 @@ class MetalSpacingRule(DesignRule):
     Distinct from :class:`MetalOverlapRule`: this catches the near-miss --
     features that do not touch but sit closer than the process can reliably
     resolve, where incomplete etching or metal residue bridges them.
+    Only pairs of different components are checked: spacing inside one
+    component (e.g. capacitor fingers) is not.
 
     Default 2 um follows the minimum same-layer metal spacing (R8) in
     [GDSII2Wafer]_. Raise it to your foundry's number.

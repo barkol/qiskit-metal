@@ -590,3 +590,14 @@ class TestFlipChipValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestValidationExports(unittest.TestCase):
+    """component_geometry_by_layer is exported for custom rules
+    (MPK: validation_scope_docs)."""
+
+    def test_component_geometry_by_layer_exported(self):
+        import qiskit_metal.validation as validation
+
+        self.assertIn("component_geometry_by_layer", validation.__all__)
+        self.assertTrue(callable(validation.component_geometry_by_layer))

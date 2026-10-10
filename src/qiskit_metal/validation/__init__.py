@@ -25,6 +25,11 @@ exists -- see :mod:`qiskit_metal.validation.rules` for the per-rule
 provenance. They are a starting point, not a guarantee for any particular
 foundry.
 
+Scope: ``metal-overlap`` and ``metal-spacing`` compare different components
+with each other. Width and spacing inside one component (e.g. the fingers of
+an interdigitated capacitor) are not checked; a custom rule can use
+:func:`component_geometry_by_layer` for that.
+
 Severity: ERROR is geometry that is wrong regardless of intent; WARNING is
 legal geometry that is probably unintended or spends a physical budget
 (loss, stray coupling). Only ERRORs make a result falsy or raise.
@@ -40,6 +45,7 @@ from .core import (
     Waiver,
     chip_bounds,
     component_geometry,
+    component_geometry_by_layer,
     representative_point,
 )
 from .rules import (
@@ -83,6 +89,7 @@ __all__ = [
     "Waiver",
     "chip_bounds",
     "component_geometry",
+    "component_geometry_by_layer",
     "representative_point",
     "validate",
 ]
