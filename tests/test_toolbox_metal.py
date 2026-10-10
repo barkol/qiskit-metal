@@ -1033,3 +1033,38 @@ class TestToolboxMetal(unittest.TestCase, AssertionsMixin):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestParseValueWarnsUnparsed(unittest.TestCase):
+    """parse_value warns when a numeric-looking string cannot be converted
+    and returns it unchanged (MPK: parse_value_silent)."""
+
+    def test_warns_and_returns_string(self):
+        from qiskit_metal import designs
+        from qiskit_metal.toolbox_metal import parsing
+
+        d = designs.DesignPlanar()
+        for expr in ("2*cpw_width", "45deg", "cpw_width * 2"):
+            parsing._WARNED_UNPARSED.discard(expr)
+            with self.assertLogs("metal", level="WARNING") as logs:
+                self.assertEqual(d.parse_value(expr), expr)
+            self.assertTrue(any(expr in m for m in logs.output))
+
+    def test_valid_values_do_not_warn(self):
+        import logging
+
+        from qiskit_metal import designs
+
+        d = designs.DesignPlanar()
+        records = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        logging.getLogger("metal").addHandler(handler)
+        try:
+            self.assertAlmostEqual(d.parse_value("1.5mm + 20um"), 1.52)
+            self.assertAlmostEqual(d.parse_value("cpw_width"), 0.01)
+            self.assertEqual(d.parse_value("pec"), "pec")
+            self.assertEqual(d.parse_value("90"), 90.0)
+        finally:
+            logging.getLogger("metal").removeHandler(handler)
+        self.assertFalse([r for r in records if "parse_value" in r.getMessage()])

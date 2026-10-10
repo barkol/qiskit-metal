@@ -321,6 +321,24 @@ def is_numeric_possible(test_str: str):
     # look into pyparsing
 
 
+_WARNED_UNPARSED = set()
+
+
+def _warn_unparsed(val: str):
+    """Warn (once per string) that a numeric-looking string was returned
+    unparsed."""
+    if val in _WARNED_UNPARSED:
+        return
+    _WARNED_UNPARSED.add(val)
+    logger.warning(
+        f"parse_value: could not convert '{val}' to a number; it is returned "
+        "as a string. Design variables cannot be combined with arithmetic "
+        "(use a numeric expression or define a variable with the result), "
+        "and only length units are converted (orientation takes plain "
+        "degrees, e.g. '45')."
+    )
+
+
 def parse_value(value: str, variable_dict: dict):
     """Parse a string, mappable (dict, Dict), iterable (list, tuple) to account
     for units conversion, some basic arithmetic, and design variables. This is
@@ -360,6 +378,10 @@ def parse_value(value: str, variable_dict: dict):
 
     Return:
         str, float, list, tuple, or ast eval: Parsed value
+
+    A string that looks like a number or an arithmetic expression but cannot
+    be converted (e.g. ``'2*cpw_width'``, ``'45deg'``) is returned unchanged,
+    with a warning logged once per distinct string.
     """
 
     if isinstance(value, str):
@@ -406,7 +428,15 @@ def parse_value(value: str, variable_dict: dict):
                 return evaluated
 
             if is_numeric_possible(val):
-                return _parse_string_to_float(value)
+                parsed = _parse_string_to_float(value)
+                if isinstance(parsed, str):
+                    _warn_unparsed(val)
+                return parsed
+
+            if any(op in val for op in "+-*/"):
+                # arithmetic that is neither a number nor a variable name,
+                # e.g. 'cpw_width * 2': returned unchanged, as before
+                _warn_unparsed(val)
 
     elif isinstance(value, Mapping):
         # If the value is a dictionary (dict,Dict,...),
