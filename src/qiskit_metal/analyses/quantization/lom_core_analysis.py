@@ -79,7 +79,12 @@ def analyze_loaded_tl(fr, vp, Z0, cap_loading: dict[str, float], shorted=False):
         shorted (boolean): default false; true if the other end of the TL is shorted false otherwise
 
     Returns:
-        [type]: [description]
+        tuple: ``(Q_zpf, Phi_zpf, phi, Ltl)``: dicts of the charge (C) and
+        flux (Wb) zero-point fluctuations at each node, the phase of the mode
+        function ``u(z) = cos(k z + phi)`` at ``z = 0`` and the line length
+        in m. ``Q_zpf`` and ``Phi_zpf`` carry the sign of ``u`` at the node
+        (for two loaded ends of the fundamental, opposite signs); a shorted
+        or open end has ``Q_zpf = 0``.
     """
     # An arbitrarily very large positive number in place of positive infinity.
     # Almost exclusively function as an infinity flag instead of actually
@@ -180,7 +185,11 @@ def analyze_loaded_tl(fr, vp, Z0, cap_loading: dict[str, float], shorted=False):
             Phi_zpf[node] = np.inf
             continue
         pCL[node] = 0.5 * val * u_end[node] ** 2 / E_cap
-        Q_zpf[node] = np.sqrt(hbar * wr / 2 * pCL[node] * val)
+        # Q_zpf carries the sign of the mode function at its end: for the
+        # loaded half-wave mode the two ends oscillate in antiphase, which
+        # matters as soon as a second path (e.g. a direct capacitance)
+        # couples the two subsystems attached to them.
+        Q_zpf[node] = np.sign(u_end[node]) * np.sqrt(hbar * wr / 2 * pCL[node] * val)
 
         # using the uncertainty relationship that Q_zpf * Phi_zpf = hbar / 2;
         # an open end (no loading capacitance) carries no charge fluctuation

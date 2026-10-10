@@ -215,3 +215,88 @@ class TestImportSideEffects(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTLResonatorTwoNodeSign(unittest.TestCase):
+    """A TL_RESONATOR loaded at both ends: the ends of the loaded half-wave
+    mode are in antiphase, so bus and direct qubit-qubit couplings add (#1219)."""
+
+    vp = 0.4 * speed_of_light
+
+    def test_q_zpf_opposite_sign(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+
+        q, phi_zpf, _, _ = analyze_loaded_tl(
+            6000.0, self.vp, 50.0, {"a": 20.0, "b": 20.0}
+        )
+        self.assertAlmostEqual(q["a"] / q["b"], -1.0, places=9)
+        self.assertLess(phi_zpf["a"] * phi_zpf["b"], 0)
+
+    def _coupling(self, cdir, bus_cap):
+        from scipy.optimize import minimize_scalar
+
+        nodes = ["g", "q1a", "q1b", "q2a", "q2b", "b1", "b2"]
+        branch = {
+            ("q1a", "q1b"): 45,
+            ("q2a", "q2b"): 45,
+            ("q1a", "g"): 40,
+            ("q1b", "g"): 40,
+            ("q2a", "g"): 40,
+            ("q2b", "g"): 40,
+            ("q1a", "b1"): bus_cap,
+            ("q2a", "b2"): bus_cap,
+            ("b1", "g"): 20,
+            ("b2", "g"): 20,
+            ("q1a", "q2a"): cdir,
+        }
+        cm = pd.DataFrame(0.0, index=nodes, columns=nodes)
+        for (a, b), c in branch.items():
+            cm.loc[a, a] += c
+            cm.loc[b, b] += c
+            cm.loc[a, b] -= c
+            cm.loc[b, a] -= c
+
+        def splitting(l2):
+            cell = Cell(
+                dict(
+                    node_rename={},
+                    cap_mat=cm,
+                    jj_dict={("q1a", "q1b"): "j1", ("q2a", "q2b"): "j2"},
+                    ind_dict={("q1a", "q1b"): 12.0, ("q2a", "q2b"): l2},
+                    cj_dict={("q1a", "q1b"): 2.0, ("q2a", "q2b"): 2.0},
+                )
+            )
+            q_opts = dict(ng=0.0, ncut=15, truncated_dim=3)
+            subs = [
+                Subsystem(name="Q1", sys_type="TRANSMON", nodes=["j1"], q_opts=q_opts),
+                Subsystem(name="Q2", sys_type="TRANSMON", nodes=["j2"], q_opts=q_opts),
+                Subsystem(
+                    name="bus",
+                    sys_type="TL_RESONATOR",
+                    nodes=["b1", "b2"],
+                    q_opts=dict(f_res=6.15, Z0=50.0, vp=self.vp, truncated_dim=3),
+                ),
+            ]
+            cs = CompositeSystem(
+                subsystems=subs,
+                cells=[cell],
+                grd_node="g",
+                nodes_force_keep=["b1", "b2"],
+            )
+            e = cs.add_interaction().eigenvals(evals_count=3)
+            return e[2] - e[1]
+
+        r = minimize_scalar(
+            splitting, bounds=(10.8, 13.2), method="bounded", options=dict(xatol=1e-4)
+        )
+        return r.fun / 2
+
+    def test_bus_and_direct_coupling_interfere_constructively(self):
+        j_direct = self._coupling(0.3, 0.0)
+        j_total = self._coupling(0.3, 4.0)
+        # an independent LC-ladder model gives 2.94 MHz (direct) and 3.64 MHz
+        # (both paths); with the same Q_zpf sign at both ends Metal gave 2.01
+        self.assertGreater(j_direct, 2.5)
+        self.assertGreater(j_total, j_direct + 0.2)
