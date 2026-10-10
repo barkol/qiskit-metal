@@ -478,5 +478,77 @@ class TestQDesignCheckDeprecation(unittest.TestCase):
             checker.overlap_tester()  # prints; asserted only not to raise
 
 
+class TestFlipChipValidation(unittest.TestCase):
+    """Rules pair geometry only on the same chip of a flip-chip design (#1212)."""
+
+    @staticmethod
+    def _flip(*lines, q_size=None):
+        from qiskit_metal.qlibrary.tlines.polyline_cpw import PolylineCPW
+
+        fc = designs.DesignFlipChip()
+        fc.overwrite_enabled = True
+        if q_size:
+            fc.chips["Q_chip"]["size"].update(size_x=q_size, size_y=q_size)
+        for name, chip, points in lines:
+            PolylineCPW(fc, name, options=Dict(chip=chip, points=points))
+        fc.rebuild()
+        return fc
+
+    def test_validate_runs_on_empty_flip_chip(self):
+        from qiskit_metal.validation import (
+            ChipBoundsRule,
+            GroundContinuityRule,
+            validate,
+        )
+
+        fc = designs.DesignFlipChip()
+        self.assertEqual(list(validate(fc)), [])
+        self.assertEqual(list(validate(fc, rules=[ChipBoundsRule()])), [])
+        self.assertEqual(list(validate(fc, rules=[GroundContinuityRule()])), [])
+
+    def test_overlap_and_spacing_only_within_a_chip(self):
+        from qiskit_metal.validation import MetalOverlapRule, MetalSpacingRule
+
+        cross = self._flip(
+            ("top", "Q_chip", [[-1, 0], [1, 0]]),
+            ("bot", "C_chip", [[0, -1], [0, 1]]),
+        )
+        self.assertEqual(list(validate(cross, rules=[MetalOverlapRule()])), [])
+        near = self._flip(
+            ("top", "Q_chip", [[-1, 0], [1, 0]]),
+            ("bot", "C_chip", [[-1, 0.011], [1, 0.011]]),
+        )
+        self.assertEqual(list(validate(near, rules=[MetalSpacingRule()])), [])
+        # The same crossing on one chip is still a short.
+        same = self._flip(
+            ("top", "Q_chip", [[-1, 0], [1, 0]]),
+            ("bot", "Q_chip", [[0, -1], [0, 1]]),
+        )
+        findings = validate(same, rules=[MetalOverlapRule()]).findings
+        self.assertEqual(len(findings), 1)
+        self.assertIn("chip 'Q_chip'", findings[0].message)
+
+    def test_chip_bounds_per_chip(self):
+        from qiskit_metal.validation import ChipBoundsRule
+
+        fc = self._flip(("bot", "C_chip", [[2, 0], [3, 0]]), q_size="2mm")
+        for chip in (None, "Q_chip", "C_chip"):
+            self.assertEqual(list(validate(fc, rules=[ChipBoundsRule(chip=chip)])), [])
+        fc = self._flip(("top", "Q_chip", [[0, 0], [3, 0]]), q_size="2mm")
+        findings = validate(fc, rules=[ChipBoundsRule()]).findings
+        self.assertEqual([f.components for f in findings], [("top",)])
+        self.assertIn("'Q_chip'", findings[0].message)
+
+    def test_ground_continuity_per_chip(self):
+        from qiskit_metal.validation import GroundContinuityRule
+
+        fc = self._flip(("top", "Q_chip", [[-4.5, 0], [4.5, 0]]))
+        rule = GroundContinuityRule
+        self.assertEqual(list(validate(fc, rules=[rule(chip="C_chip")])), [])
+        findings = validate(fc, rules=[rule()]).findings
+        self.assertEqual(len(findings), 1)
+        self.assertIn("chip 'Q_chip'", findings[0].message)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

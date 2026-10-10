@@ -298,11 +298,27 @@ def _rows(design: "QDesign", table: str):
     yield from tables[table].iterrows()
 
 
+def row_chip(row) -> str:
+    """The chip a qgeometry row belongs to (``"main"`` if not recorded)."""
+    chip = row.get("chip", None)
+    return "main" if chip is None or chip != chip else str(chip)
+
+
+def design_chips(design: "QDesign") -> list[str]:
+    """Names of the design's chips that define a ``size``."""
+    return [
+        name
+        for name, chip in design.chips.items()
+        if isinstance(chip, dict) and "size" in chip
+    ]
+
+
 def component_geometry(
     design: "QDesign",
     *,
     subtract: bool | None = False,
     tables: Sequence[str] = ("path", "poly"),
+    chip: str | None = None,
 ) -> dict[str, MultiPolygon]:
     """Union each component's qgeometry into one polygon per component.
 
@@ -313,6 +329,8 @@ def component_geometry(
             etched footprint (a CPW's trace + both gaps, a qubit's pocket).
             ``None`` keeps everything.
         tables (Sequence[str]): which qgeometry tables to read.
+        chip (str): keep only rows on this chip. ``None`` (default) keeps
+            every chip.
 
     Returns:
         dict: component name -> unioned geometry. Components contributing
@@ -323,6 +341,8 @@ def component_geometry(
     for table in tables:
         for _, row in _rows(design, table):
             if subtract is not None and bool(row["subtract"]) != subtract:
+                continue
+            if chip is not None and row_chip(row) != chip:
                 continue
             geom = row["geometry"]
             if geom is None or geom.is_empty:
@@ -341,20 +361,23 @@ def component_geometry_by_layer(
     *,
     subtract: bool | None = False,
     tables: Sequence[str] = ("path", "poly"),
-) -> dict[int, dict[str, MultiPolygon]]:
+    by_chip: bool = False,
+) -> dict:
     """Like :func:`component_geometry`, but keyed by layer first.
 
     Rules about metal touching metal -- shorts, minimum spacing -- are only
     meaningful within a single layer. An airbridge span (layer 30) passing
     over a CPW (layer 1) overlaps in projection and is the whole point of
     an airbridge; comparing across layers reports every one of them as a
-    short.
+    short. The same holds across chips: layer 1 of the two facing chips of
+    a flip-chip design is not one plane, so pass ``by_chip=True``.
 
     Returns:
-        dict: layer -> {component name -> unioned geometry}.
+        dict: layer -> {component name -> unioned geometry}, or
+        (chip, layer) -> {...} with ``by_chip=True``.
     """
     names = component_names_by_id(design)
-    parts: dict[int, dict[str, list]] = {}
+    parts: dict = {}
     for table in tables:
         for _, row in _rows(design, table):
             if subtract is not None and bool(row["subtract"]) != subtract:
@@ -365,6 +388,8 @@ def component_geometry_by_layer(
             if table == "path":
                 geom = geom.buffer(row["width"] / 2.0, cap_style=2)
             layer = int(row["layer"])
+            if by_chip:
+                layer = (row_chip(row), layer)
             parts.setdefault(layer, {}).setdefault(names[row["component"]], []).append(
                 geom
             )
