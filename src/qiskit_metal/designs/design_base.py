@@ -1174,12 +1174,16 @@ class QDesign:
         Generates a python script from current chip
 
         The script is self-contained: it imports ``qiskit_metal`` and every
-        component class it uses, rebuilds the design in a ``MetalGUI``, and --
-        when run standalone (``python my_chip_design.py``) -- starts the Qt
-        event loop so the window stays open. The event loop is guarded on
-        ``__name__ == "__main__"`` and on a live ``QApplication``, so importing
-        the script, or running it where a Qt loop already exists (Jupyter with
-        ``%gui qt``) or where no display is available, does not block or raise.
+        component class it uses, restores the design's chips and variables,
+        rebuilds the components and, when the ``[gui]`` extra is installed,
+        shows them in a ``MetalGUI``. On a lite install (no PySide6) the GUI
+        step is skipped, so the script still builds the design headless. When
+        run standalone (``python my_chip_design.py``) with the GUI, it starts
+        the Qt event loop so the window stays open. The event loop is guarded
+        on ``__name__ == "__main__"`` and on a live ``QApplication``, so
+        importing the script, or running it where a Qt loop already exists
+        (Jupyter with ``%gui qt``) or where no display is available, does not
+        block or raise.
 
         Args:
             printout (bool): Whether to print the script
@@ -1187,17 +1191,37 @@ class QDesign:
         Returns:
             str: Python script for current chip
         """
-        header = """
+        from pprint import pformat
+
+        def _to_plain(obj):
+            # Dict (addict) -> nested plain dict, so pformat gives a literal
+            return obj.to_dict() if hasattr(obj, "to_dict") else dict(obj)
+
+        header = f"""
 import qiskit_metal
-from qiskit_metal import designs, MetalGUI
+from qiskit_metal import designs
 
 design = designs.DesignPlanar()
 
-gui = MetalGUI(design)
+# Chips and design variables
+design.chips.update(
+{pformat(_to_plain(self.chips), indent=4, sort_dicts=False)}
+)
+design.variables.update(
+{pformat(_to_plain(self.variables), indent=4, sort_dicts=False)}
+)
 """
         footer = """
-gui.rebuild()
-gui.autoscale()
+# The desktop MetalGUI needs the optional ``[gui]`` extra (PySide6). On a lite
+# install the design is still built; view it with ``qiskit_metal.view(design)``.
+try:
+    from qiskit_metal import MetalGUI
+except ImportError:
+    gui = None
+else:
+    gui = MetalGUI(design)
+    gui.rebuild()
+    gui.autoscale()
 
 # Keep the MetalGUI window open when this file is run as a standalone script
 # (``python my_chip_design.py``). Without an event loop the process exits
@@ -1207,7 +1231,7 @@ gui.autoscale()
 # session that already runs a Qt loop (Jupyter/IPython with ``%gui qt``) --
 # does not block the caller. ``gui.qApp`` may be None if no QApplication could
 # be created (e.g. a headless machine), so check before calling into it.
-if __name__ == "__main__" and gui.qApp is not None:
+if __name__ == "__main__" and gui is not None and gui.qApp is not None:
     gui.qApp.exec()
 """
         # all imports at front
@@ -1228,7 +1252,7 @@ if __name__ == "__main__" and gui.qApp is not None:
 {i}
 """
 
-        if "array(" in body:
+        if "array(" in header + body:
             str_import += "\nfrom numpy import array\n"
 
         python_script = str_import + header + body + footer

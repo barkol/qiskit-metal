@@ -157,7 +157,8 @@ class TestToPythonScriptStructure(unittest.TestCase):
 
         script = design.to_python_script()
 
-        self.assertIn("from qiskit_metal import designs, MetalGUI", script)
+        self.assertIn("from qiskit_metal import designs", script)
+        self.assertIn("from qiskit_metal import MetalGUI", script)
         self.assertIn("design = designs.DesignPlanar()", script)
         self.assertIn("MetalGUI(design)", script)
         self.assertIn("gui.rebuild()", script)
@@ -269,6 +270,64 @@ class TestQtEventLoop(unittest.TestCase):
             self._script(), run_name="__main__", gui_cls=_StubMetalGUINoQApp
         )
         self.assertIsNone(ns["gui"].qApp)
+
+
+def _exec_exported_script_lite(script: str, run_name: str = "__main__") -> dict:
+    """Execute ``script`` as on a lite install, where ``MetalGUI`` cannot be
+    imported (``qiskit_metal.__getattr__`` raises ``ImportError``)."""
+    qm = sys.modules["qiskit_metal"]
+    cached = qm.__dict__.pop("MetalGUI", None)
+    original_getattr = qm.__dict__.get("__getattr__")
+
+    def _lite_getattr(name):
+        if name == "MetalGUI":
+            raise ImportError("MetalGUI requires the optional GUI extras")
+        return original_getattr(name)
+
+    qm.__getattr__ = _lite_getattr
+    try:
+        ns: dict = {"__name__": run_name}
+        exec(compile(script, "<exported.metal.py>", "exec"), ns)
+        return ns
+    finally:
+        qm.__getattr__ = original_getattr
+        if cached is not None:
+            qm.MetalGUI = cached
+
+
+class TestLiteInstallAndDesignState(unittest.TestCase):
+    """Issue #1205 -- the script runs without the GUI extras and restores
+    the design's chips and variables."""
+
+    @staticmethod
+    def _design() -> "designs.DesignPlanar":
+        design = designs.DesignPlanar()
+        design.chips.main.size.size_x = "6mm"
+        design.chips.main.material = "sapphire"
+        design.variables.cpw_width = "10um"
+        design.variables["pad_x"] = "1.2mm"
+        TransmonPocket(design, "Q1", options=dict(pos_x="pad_x"))
+        return design
+
+    def test_runs_without_metalgui(self):
+        script = self._design().to_python_script()
+        ns = _exec_exported_script_lite(script)
+        self.assertIsNone(ns["gui"])
+        self.assertIn("Q1", ns["design"].components)
+
+    def test_restores_chips_and_variables(self):
+        design = self._design()
+        ns = _exec_exported_script_lite(design.to_python_script())
+        rebuilt = ns["design"]
+        self.assertEqual(rebuilt.chips.to_dict(), design.chips.to_dict())
+        self.assertEqual(dict(rebuilt.variables), dict(design.variables))
+        self.assertEqual(rebuilt.chips.main.size.size_x, "6mm")
+        self.assertEqual(rebuilt.variables.cpw_width, "10um")
+        # The component option that references a variable parses the same.
+        self.assertAlmostEqual(
+            rebuilt.components.Q1.parse_value(rebuilt.components.Q1.options.pos_x),
+            1.2,
+        )
 
 
 class TestNumpyArrayImport(unittest.TestCase):
