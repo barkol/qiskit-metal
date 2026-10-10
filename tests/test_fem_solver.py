@@ -49,6 +49,28 @@ class TestAnalyticPackageModes(unittest.TestCase):
         tm110 = C0 / 2 * np.hypot(1 / 30e-3, 1 / 30e-3)
         self.assertLess(abs(mode.f / tm110 - 1), 1e-4)
 
+    def test_small_boxes_give_the_lowest_root(self):
+        """The bracket stays below the tan(k_s t) pole (#1211): a 4 mm box
+        raised ValueError and a 2 mm box returned a higher-order root."""
+        eps_r = 11.45
+        f_prev = 0.0
+        for L in (12, 8, 6, 5, 4, 3, 2):
+            mode = pm.lsm_mode(1, 1, L, L, 3.0, 0.5, eps_r)
+            ks_t = mode.kz_si * mode.t
+            self.assertLess(ks_t, np.pi / 2)  # fundamental branch
+            residual = mode.kz_si * np.tan(ks_t) - eps_r * mode.kz_air * np.tanh(
+                mode.kz_air * (mode.Lz - mode.t)
+            )
+            self.assertLess(abs(residual) / mode.kz_si, 1e-6)
+            self.assertGreater(mode.f, f_prev)  # smaller box, higher mode
+            f_prev = mode.f
+        self.assertAlmostEqual(
+            pm.lsm_mode(1, 1, 2, 2, 3.0, 0.5, eps_r).f / 1e9, 51.33, places=2
+        )
+        self.assertAlmostEqual(
+            pm.lsm_mode(1, 1, 12, 12, 3.0, 0.5, eps_r).f / 1e9, 16.072, places=3
+        )
+
     def test_uncoupled_circuit_frequencies(self):
         C = np.diag([100e-15, 200e-15])
         L = np.diag([10e-9, 5e-9])

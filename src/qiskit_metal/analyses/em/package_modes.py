@@ -131,7 +131,11 @@ def lsm_mode(a, b, Lx, Ly, Lz, t, eps_r, Em=1.0):
         return ks * np.tan(ks * t) - eps_r * ka * np.tanh(ka * (Lz - t))
 
     lo = C0 * gamma / np.sqrt(eps_r) * (1 + 1e-12)
-    hi = C0 * gamma * (1 - 1e-12)
+    # The residual has a pole where k_s t = pi/2. For small or tall-substrate
+    # boxes it lies below k0 = gamma; keep the bracket below it, so that it
+    # holds the lowest root only (the residual is < 0 at lo and -> +inf there).
+    w_pole = C0 * np.sqrt(gamma**2 + (np.pi / (2 * t)) ** 2) / np.sqrt(eps_r)
+    hi = min(C0 * gamma * (1 - 1e-12), w_pole * (1 - 1e-9))
     w = opt.brentq(residual, lo, hi, xtol=1e-6)
     ks, ka = kz(w)
 
