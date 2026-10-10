@@ -901,3 +901,28 @@ class TestDraw(unittest.TestCase, AssertionsMixin):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestBufferQuadSegs(unittest.TestCase):
+    """draw.buffer passes quad_segs, not the deprecated resolution (#1228)."""
+
+    def test_no_deprecation_warning(self):
+        import warnings
+
+        from qiskit_metal import designs
+        from qiskit_metal.qlibrary.qubits.transmon_pocket import TransmonPocket
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            basic.buffer(LineString([(0, 0), (1, 0)]), 0.1, resolution=8)
+            d = designs.DesignPlanar()
+            q = TransmonPocket(
+                d, "Q1", options=dict(connection_pads=dict(a=dict(loc_W=1, loc_H=1)))
+            )
+        self.assertEqual(q.status, "good")
+
+    def test_resolution_still_sets_segments(self):
+        tri = Polygon([(0, 0), (1e-3, 0), (0, 1e-3)])
+        circle_8 = basic.buffer(tri, 1.0, resolution=8, join_style=JOIN_STYLE.round)
+        circle_2 = basic.buffer(tri, 1.0, resolution=2, join_style=JOIN_STYLE.round)
+        self.assertGreater(len(circle_8.exterior.coords), len(circle_2.exterior.coords))

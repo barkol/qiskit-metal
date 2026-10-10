@@ -480,7 +480,8 @@ def buffer(
         buffer_me,
         qgeometry,
         distance,
-        resolution=resolution,
+        # shapely 2 deprecates ``resolution``; ``quad_segs`` is the same count
+        quad_segs=int(resolution),
         cap_style=cap_style,
         join_style=join_style,
         mitre_limit=mitre_limit,
