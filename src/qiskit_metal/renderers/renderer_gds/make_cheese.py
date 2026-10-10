@@ -348,42 +348,64 @@ class Cheesing:
     def _subtract_keepout_from_hole_grid(
         self, gather_holes_cell: gdstk.Cell
     ) -> gdstk.Cell:
-        """Given a cell with all the holes, subtract the keepout region.
-        Then return a new cell with the result.
+        """Given a cell with all the holes, remove the holes that reach into
+        the keepout region. Then return a new cell with the result.
+
+        A hole that overlaps the keepout is dropped whole rather than trimmed
+        to the keepout edge: trimming leaves etched slivers whose width
+        depends only on where the grid falls relative to the edge, and can
+        be far below the process's minimum feature size.
 
         Args:
             gather_holes_cell (gdstk.Cell): Holds a grid of all
                                                 the holes for cheesing.
 
         Returns:
-            gdstk.Cell: Newly created cell that holds the difference
-                                        of holes minus the keep=out region.
+            gdstk.Cell: Newly created cell that holds the holes that lie
+                                        entirely outside the keep-out region.
         """
+        from shapely.geometry import Polygon
+        from shapely.strtree import STRtree
 
-        # subtact the keepout, note, Based on user options,
-        # the keepout (no_cheese) cell may not be in self.lib.
-        temp_keepout_chip_layer_cell = f"temp_keepout_{self.chip_name}_{self.layer}"
-        temp_keepout_cell = self.lib.new_cell(temp_keepout_chip_layer_cell)
+        # Based on user options, the keepout (no_cheese) may be empty.
         flat_nocheese = []
         for item in self.nocheese_gds:
             if isinstance(item, list):
                 flat_nocheese.extend(item)
             else:
                 flat_nocheese.append(item)
-        temp_keepout_cell.add(*flat_nocheese)
-        diff_holes = gdstk.boolean(
-            gather_holes_cell.get_polygons(),
-            temp_keepout_cell.get_polygons(),
-            "not",
-            precision=self.precision,
-            layer=self.layer,
-            datatype=self.datatype_cheese + 1,
+        # A temporary cell flattens any gdstk element type into polygons.
+        temp_keepout_cell = self.lib.new_cell(
+            f"temp_keepout_{self.chip_name}_{self.layer}"
         )
+        temp_keepout_cell.add(*flat_nocheese)
+        keepout = [
+            Polygon(p.points)
+            for p in temp_keepout_cell.get_polygons()
+            if len(p.points) >= 3
+        ]
+        self.lib.remove(temp_keepout_cell)
+        keepout = [k if k.is_valid else k.buffer(0) for k in keepout]
+        tree = STRtree(keepout) if keepout else None
+
+        kept = []
+        for poly in gather_holes_cell.get_polygons():
+            if tree is not None:
+                hole = Polygon(poly.points)
+                # Touching the keepout edge (zero-area overlap) is fine.
+                if any(
+                    keepout[int(i)].intersection(hole).area > 0
+                    for i in tree.query(hole, predicate="intersects")
+                ):
+                    continue
+            hole_copy = poly.copy()
+            hole_copy.layer = self.layer
+            hole_copy.datatype = self.datatype_cheese + 1
+            kept.append(hole_copy)
+
         diff_holes_cell_name = f"TOP_{self.chip_name}_{self.layer}_Cheese_diff"
         diff_holes_cell = self.lib.new_cell(diff_holes_cell_name)
-        diff_holes_cell.add(*diff_holes)
-
-        self.lib.remove(temp_keepout_cell)
+        diff_holes_cell.add(*kept)
         return diff_holes_cell
 
     def _get_all_holes(self) -> gdstk.Cell:

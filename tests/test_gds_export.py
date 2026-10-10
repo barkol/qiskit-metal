@@ -439,5 +439,52 @@ class TestDebugSummarizeGDSLibrary(unittest.TestCase):
             self.assertTrue(os.path.exists(out))
 
 
+class TestCheeseHolesAtKeepoutEdge(unittest.TestCase):
+    """Holes reaching into the no-cheese keep-out are dropped, not trimmed
+    to slivers (#1214)."""
+
+    def test_no_trimmed_holes(self):
+        from shapely.geometry import Polygon
+
+        from qiskit_metal.qlibrary.terminations.open_to_ground import OpenToGround
+        from qiskit_metal.qlibrary.tlines.straight_path import RouteStraight
+
+        design = designs.DesignPlanar()
+        design.chips.main.size.update(size_x="2mm", size_y="2mm")
+        # y0 = 24.5 um puts the keep-out edge 1 um into a row of holes.
+        for name, x, orient in (("A", "-0.5mm", "180"), ("B", "0.5mm", "0")):
+            OpenToGround(
+                design,
+                name,
+                options=dict(pos_x=x, pos_y="0.0245mm", orientation=orient),
+            )
+        RouteStraight(
+            design,
+            "L",
+            options=Dict(
+                pin_inputs=Dict(
+                    start_pin=Dict(component="A", pin="open"),
+                    end_pin=Dict(component="B", pin="open"),
+                )
+            ),
+        )
+        design.rebuild()
+        gds = design.renderers.gds
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(pathlib.Path(tmp) / "cheese.gds")
+            gds.export_to_gds(out)
+            lib = gdstk.read_gds(out)
+        holes = [
+            Polygon(p.points)
+            for c in lib.cells
+            if c.name.endswith("_Cheese_diff")
+            for p in c.polygons
+        ]
+        self.assertGreater(len(holes), 100)
+        side = design.parse_value(gds.options.cheese.cheese_0_x)
+        for hole in holes:
+            self.assertAlmostEqual(hole.area / side**2, 1.0, places=6)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
