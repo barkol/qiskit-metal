@@ -431,3 +431,50 @@ class TestTransmonMathieu(unittest.TestCase):
             0, 0.0, self.ej / self.ec, self.ec
         )
         self.assertAlmostEqual(f01, 5382.43, places=1)
+
+
+class TestHcpbParamsFromSpectrum(unittest.TestCase):
+    """Hcpb.params_from_spectrum reaches the target or warns; n_to_qutip
+    keeps the signs of the charge matrix elements (#1221)."""
+
+    def test_reproduces_targets(self):
+        import warnings
+
+        from qiskit_metal.analyses.hamiltonian.transmon_charge_basis import Hcpb
+
+        for f01, alpha in [
+            (5382.4, -345.5),
+            (5000.0, -300.0),
+            (6000.0, -330.0),
+            (4500.0, -200.0),
+            (7000.0, -150.0),
+        ]:
+            h = Hcpb(nlevels=15, Ej=1.0, Ec=1.0)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                ej, ec = h.params_from_spectrum(f01, alpha)
+            h2 = Hcpb(nlevels=15, Ej=ej, Ec=ec)
+            self.assertLess(abs(h2.fij(0, 1) - f01), 1e-3, msg=f"{f01}, {alpha}")
+            self.assertLess(abs(h2.anharm() - alpha), 1e-3, msg=f"{f01}, {alpha}")
+
+    def test_unreachable_target_warns(self):
+        from qiskit_metal.analyses.hamiltonian.transmon_charge_basis import Hcpb
+
+        with self.assertWarns(RuntimeWarning):
+            Hcpb(nlevels=15, Ej=1.0, Ec=1.0).params_from_spectrum(3000.0, -800.0)
+
+    def test_n_to_qutip_keeps_signs(self):
+        from qiskit_metal.analyses.hamiltonian.transmon_charge_basis import Hcpb
+
+        h = Hcpb(nlevels=15, Ej=2000.0, Ec=400.0, ng=0.25)
+        n = h.n_to_qutip(4).full().real
+        nop = np.arange(-15, 16)
+        vecs = h.evecs[:, :4]
+        ref = vecs.T @ (nop[:, None] * vecs)
+        # the loop product is gauge invariant and negative here
+        loop_ref = ref[0, 1] * ref[1, 2] * ref[2, 0]
+        self.assertLess(loop_ref, -0.03)
+        self.assertAlmostEqual(n[0, 1] * n[1, 2] * n[2, 0], loop_ref, places=12)
+        np.testing.assert_allclose(np.abs(n), np.abs(ref - np.diag(np.diag(ref))), atol=1e-12)
+        self.assertAlmostEqual(h.n_ij(0, 2, signed=True) ** 2, ref[0, 2] ** 2, places=12)
+        self.assertGreaterEqual(h.n_ij(0, 2), 0.0)

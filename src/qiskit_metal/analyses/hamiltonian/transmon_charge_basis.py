@@ -17,6 +17,8 @@ get the Ej, Ec or use input Ej, Ec to find the spectrum of the Cooper Pair Box.
 @author: Christopher Warren (Chalmers University of Technology), updated by Zlatko K. Minev (IBM Quantum)
 """
 
+import warnings
+
 import numpy as np
 import qutip as qt
 from scipy import linalg
@@ -183,23 +185,47 @@ class Hcpb:
         """
         return self.fij(1, 2) - self.fij(0, 1)
 
-    def n_ij(self, i: int, j: int):
+    def n_ij(self, i: int, j: int, signed: bool = False):
         r"""Compute the value of the number operator for coupling elements
         together in the energy eigen-basis.
 
         Args:
             i (int): \|i> Index of the transmon
             j (int): \|j> Index of the transmon
+            signed (bool): Return the signed (real) matrix element
+                `<i|n|j>` in the gauge of the stored eigenvectors instead
+                of its modulus. Defaults to False.
 
         Returns:
             float: Matrix element corresponding to the
             number operator in the transmon basis
-            `n_ij = |<i|n|j>|`
+            `n_ij = |<i|n|j>|` (or `<i|n|j>` if `signed`)
+
+        The Hamiltonian is real symmetric for every ``ng``, so the matrix
+        elements are real. For an operator use :meth:`n_to_qutip`, which
+        keeps the relative signs: the moduli alone are not a valid charge
+        operator for ``ng`` other than 0 or 1/2.
         """
         n_op = np.arange(-self._nlevels, self._nlevels + 1)
-        n_ij = np.conj(self.evec_k(i)) * n_op * self.evec_k(j)
-        n_ij = np.abs(np.sum(n_ij))
-        return n_ij
+        n_ij = np.sum(np.conj(self.evec_k(i)) * n_op * self.evec_k(j))
+        if signed:
+            return float(np.real(n_ij))
+        return np.abs(n_ij)
+
+    def _n_matrix(self, n_transmon: int):
+        """Signed charge operator in the lowest ``n_transmon`` eigenstates,
+        in the gauge where every ``<k|n|k+1>`` is non-negative."""
+        mat = np.array(
+            [
+                [self.n_ij(i, j, signed=True) for j in range(n_transmon)]
+                for i in range(n_transmon)
+            ]
+        )
+        sign = np.ones(n_transmon)
+        for k in range(n_transmon - 1):
+            if mat[k, k + 1] * sign[k] < 0:
+                sign[k + 1] = -1.0
+        return sign[:, None] * mat * sign[None, :]
 
     def h0_to_qutip(self, n_transmon: int):
         """Wrapper around Qutip to output the diagonalized Hamiltonian
@@ -232,18 +258,17 @@ class Hcpb:
             Qobj: Returns a Qutip Qobj corresponding to the
             number operator for defining couplings in the
             energy eigen-basis.
+
+        The matrix elements keep their relative signs, in the gauge where
+        every ``<k|n|k+1>`` is positive; their moduli are ``n_ij(i, j)``. At
+        ``ng = 0`` or ``1/2`` this is the same matrix as the moduli (up to
+        the signs of the elements ``n_{k,k+3}``, ...); for other ``ng`` the
+        signs cannot be gauged away and change the coupled spectrum.
         """
-        n_op = np.zeros((n_transmon, n_transmon))
-        for i in range(n_transmon):
-            for j in range(n_transmon):
-                if i == j:
-                    n_op[i, j] = 0
-                else:
-                    val = self.n_ij(i, j)
-                    if thresh is not None:
-                        if val < thresh:
-                            val = 0
-                    n_op[i, j] = val
+        n_op = self._n_matrix(n_transmon)
+        np.fill_diagonal(n_op, 0.0)
+        if thresh is not None:
+            n_op[np.abs(n_op) < thresh] = 0.0
         return qt.Qobj(n_op)
 
     def params_from_spectrum(self, f01: float, anharm: float, **kwargs):
@@ -271,19 +296,33 @@ class Hcpb:
         def fun(x):
             self.Ej = x[0]
             self.Ec = x[1]
-            # the 10 on the anharmonicity allows faster convergnce, see Minev
-            return (self.fij(0, 1) - f01) ** 2 + 10 * (self.anharm() - anharm) ** 2
+            # vector of residuals: least_squares squares and sums them
+            return [self.fij(0, 1) - f01, self.anharm() - anharm]
 
         # Initial guesses from
         # f01 ~ sqrt(8*Ej*Ec) - Ec
         #  eta ~ -Ec
         x0 = [(f01 - anharm) ** 2 / (8 * (-anharm)), -anharm]
-        # can converge slowly if cost function not set up well, or alpha<<freq
         ops = dict(
-            bounds=[(0, 0), (x0[0] * 3, x0[1] * 3)], f_scale=1 / x0[0], max_nfev=2000
+            bounds=[(0, 0), (x0[0] * 3, x0[1] * 3)],
+            x_scale=np.abs(x0),
+            xtol=1e-12,
+            ftol=1e-12,
+            max_nfev=2000,
         )
+        kwargs.pop("f_scale", None)  # no effect with the linear loss
         res = opt.least_squares(fun, x0, **{**ops, **kwargs})
         self.Ej, self.Ec = res.x
+        miss = np.max(np.abs(fun(res.x)))
+        if miss > 1e-6 * abs(f01):
+            warnings.warn(
+                f"params_from_spectrum did not reach the target (f01={f01}, "
+                f"anharm={anharm}) within the bounds {ops['bounds']}: the "
+                f"returned Ej={res.x[0]:.6g}, Ec={res.x[1]:.6g} miss it by "
+                f"{miss:.3g} (same unit as f01).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return res.x
 
     def params_from_freq_fixEC(self, f01: float, Ec: float, **kwargs):
