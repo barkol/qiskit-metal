@@ -265,3 +265,64 @@ class TestDispersiveShiftChi(unittest.TestCase):
         expected = 2 * chi(g, wr, wq, w12, g12=g * transmon_charge_ratio(ej / ec))
         got = np.asarray(res["chi_in_MHz"]).ravel()[0] * 2 * np.pi * 1e6
         self.assertAlmostEqual(got / expected, 1.0, places=9)
+
+
+def _notch_s21(f, fr, ql, qc, tau=0.0, a=1.0):
+    """Ideal notch-type S21 with a cable delay tau."""
+    return (
+        a
+        * np.exp(-2j * np.pi * f * tau)
+        * (1 - (ql / qc) / (1 + 2j * ql * (f / fr - 1)))
+    )
+
+
+class TestFitTransmission(unittest.TestCase):
+    """fit_transmission on noiseless notch data (#1209)."""
+
+    fr, ql, qc = 7.0e9, 6837.0, 7000.0
+
+    def _fit(self, span, tau=0.0, **kwargs):
+        from qiskit_metal.analyses.em.transmission_fitting import fit_transmission
+
+        f = np.linspace(self.fr - span, self.fr + span, 2001)
+        result, _ = fit_transmission(
+            f, _notch_s21(f, self.fr, self.ql, self.qc, tau, 0.9), plot=False, **kwargs
+        )
+        return result
+
+    def _assert_exact(self, r, tau=0.0):
+        self.assertAlmostEqual(r["Qr"] / self.ql, 1.0, places=5)
+        self.assertAlmostEqual(abs(r["Qc"]) / self.qc, 1.0, places=5)
+        self.assertAlmostEqual(r["fr"] / self.fr, 1.0, places=9)
+        self.assertAlmostEqual(r["delay"] * 1e9, tau * 1e9, places=4)
+
+    def test_narrow_span_unbiased(self):
+        # +-3 linewidths: the unscaled final fit returned the phi-RM start
+        # point, Q about 20 % high.
+        self._assert_exact(self._fit(3 * self.fr / self.ql))
+
+    def test_cable_delay(self):
+        for span in (6e6, 50e6):
+            self._assert_exact(self._fit(span, tau=40e-9), tau=40e-9)
+
+    def test_no_detrend(self):
+        self._assert_exact(self._fit(6e6, detrend=False))
+
+    def test_jacobian_matches_numerical(self):
+        from qiskit_metal.analyses.em.transmission_fitting import (
+            _lorentz_func,
+            _lorentz_jacob,
+        )
+
+        f = np.linspace(6.99e9, 7.01e9, 11)
+        freq = np.hstack((f, f))
+        p = np.array([0.8, 0.3, 6837.0, 7000.0, 7e9, 0.3, 3e-9])
+        jac = _lorentz_jacob(freq, *p)
+        for k in range(len(p)):
+            h = abs(p[k]) * 1e-7
+            up, dn = p.copy(), p.copy()
+            up[k] += h
+            dn[k] -= h
+            num = (_lorentz_func(freq, *up) - _lorentz_func(freq, *dn)) / (2 * h)
+            err = np.max(abs(num - jac[:, k])) / np.max(abs(num))
+            self.assertLess(err, 1e-5, msg=f"parameter {k}")

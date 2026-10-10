@@ -39,7 +39,9 @@ def _detrend_transmission(
     # First detrending for the delay
     # This is done by detrending the phase using the initial points and the final points
 
-    mag, phas = np.abs(s21), np.angle(s21)
+    # Unwrap the phase, otherwise a cable delay of more than half a turn over
+    # the span makes the end-point slope meaningless.
+    mag, phas = np.abs(s21), np.unwrap(np.angle(s21))
 
     fit_delay_init = linregress(
         x=np.hstack((del_freq[:detrend_points_init], del_freq[-detrend_points_final:])),
@@ -191,6 +193,8 @@ def _lorentz_jacob(
     )
     jac1 = np.exp(1.0j * (amplitude_complex_arg - 2.0 * np.pi * freq_ * delay)) - temp
     jac2 = 1.0j * amplitude_complex_mag * jac1  # arg(A)
+    # The resonant term is multiplied by |A| in the model
+    temp = amplitude_complex_mag * temp
     jac3 = -temp / (Qr * (1 + 2.0j * Qr * (freq_ - fr) / fr))  # Qr
     jac4 = temp / Qc  # Qc
     jac5 = jac3 * 2.0j * freq_ * (Qr / fr) * (Qr / fr)  # fr
@@ -229,6 +233,9 @@ def _fit_lorentzian(
         xtol=1e-15,
         method="trf",
         max_nfev=1e6,
+        # fr (~1e10 Hz), Q (~1e4) and delay (~1e-8 s) differ by many orders of
+        # magnitude; without scaling trf stops at the starting point.
+        x_scale="jac",
     )
     return lorentz_fit_result, lorentz_fit_cov
 
@@ -370,7 +377,8 @@ def fit_transmission(
 
     # Returning the results with post-processing
     amplitude_complex = amplitude_complex_mag * np.exp(1.0j * amplitude_complex_arg)
-    delay -= (fit_delay_init.slope) / (2.0 * np.pi)
+    if fit_delay_init is not None:
+        delay -= (fit_delay_init.slope) / (2.0 * np.pi)
 
     # amplitude_complex_mag, amplitude_complex_arg, Qr, Qc, fr, phi0, delay
 
