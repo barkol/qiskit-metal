@@ -36,6 +36,12 @@ from qiskit_metal.renderers.renderer_gds.gds_boolean import (
 from qiskit_metal.renderers.renderer_gds.make_cheese import Cheesing
 from qiskit_metal.toolbox_metal.parsing import is_true
 
+#: Sample junction cells shipped with the package (``FakeJunction_01``,
+#: ``FakeJunction_02``, ``my_other_junction``); the default ``path_filename``.
+DEFAULT_JUNCTION_GDS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "resources", "Fake_Junctions.GDS"
+)
+
 if not config.is_building_docs():
     from qiskit_metal.toolbox_python.utility_functions import (
         can_write_to_path,
@@ -88,7 +94,8 @@ class QGDSRenderer(QRenderer):
         * tolerance: '0.00001'
         * precision: '0.000000001'
         * width_LineString: '10um'
-        * path_filename: '../resources/Fake_Junctions.GDS'
+        * path_filename: the sample ``Fake_Junctions.GDS`` shipped in
+          ``qiskit_metal/renderers/renderer_gds/resources`` (``DEFAULT_JUNCTION_GDS``)
         * junction_pad_overlap: '5um'
         * max_points: '199'
         * fabricate: 'False'
@@ -182,7 +189,10 @@ class QGDSRenderer(QRenderer):
         # into gds Metal output without being edited. The name of the cell can
         # be placed as options for a component, i.e. placing within a qubit.
         # During export, the cell will NOT be edited, just imported.
-        path_filename="../resources/Fake_Junctions.GDS",
+        # Defaults to the sample file shipped with the package
+        # (DEFAULT_JUNCTION_GDS); a relative path is resolved against the
+        # current working directory.
+        path_filename=DEFAULT_JUNCTION_GDS,
         # For junction table, when cell from default_options.path_filename does
         # not fit into linestring, QGDSRender will create two pads and add to
         # junction to fill the location of lineString.  The junction_pad_overlap
@@ -1912,7 +1922,8 @@ class QGDSRenderer(QRenderer):
 
         if not os.path.isfile(self.options.path_filename):
             message_str = (
-                f'Not able to find file:"{self.options.path_filename}".  '
+                f'Not able to find file:"{self.options.path_filename}" '
+                f'(resolved to "{os.path.abspath(self.options.path_filename)}").  '
                 f"Not used to replace junction."
                 f' Checked directory:"{directory_name}".'
             )

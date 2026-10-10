@@ -20,6 +20,7 @@ fixed in:
   - gds_renderer.py : ref.ref_cell → ref.cell (negative-mask export)
 """
 
+import os
 import pathlib
 import tempfile
 import unittest
@@ -551,3 +552,22 @@ class TestFabricateNoDanglingReferences(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGDSDefaultJunctionFile(unittest.TestCase):
+    """The default path_filename is the junction GDS shipped with the
+    package, so exports work from any working directory (#1223)."""
+
+    def test_default_options_import_junction_cells(self):
+        design = _make_two_qubit_design()
+        gds = design.renderers.gds
+        gds.options["short_segments_to_not_fillet"] = "True"
+        old = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                self.assertEqual(gds.export_to_gds("out.gds"), 1)
+                cells = {c.name for c in gdstk.read_gds("out.gds").cells}
+            finally:
+                os.chdir(old)
+        self.assertIn("FakeJunction_01", cells)
