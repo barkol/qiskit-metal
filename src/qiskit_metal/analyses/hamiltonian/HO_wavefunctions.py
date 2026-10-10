@@ -19,68 +19,52 @@ Key References:
 
 from math import factorial, pi, sqrt
 
+import numpy as np
+from scipy.special import eval_hermite
+
 __all__ = ["wavefunction"]
 
 
-def wavefunction(L, C, n, x):
-    """This function calculates the nth wavefunction of the harmonic oscillator
-    for a given value of inductance (L) and capacitance (C) at a charge x.
+def wavefunction(L, C, n, x, hbar=1.0):
+    r"""Return the nth normalized wavefunction of the LC harmonic oscillator.
+
+    The charge :math:`x` is the coordinate and the inductance plays the role
+    of the mass (:math:`H = L\dot{q}^2/2 + q^2/2C`), so with
+    :math:`\omega = 1/\sqrt{LC}` and :math:`\xi = \sqrt{L\omega/\hbar}\,x`
+
+    .. math::
+
+        \psi_n(x) = \frac{1}{\sqrt{2^n n!}}
+        \left(\frac{L\omega}{\pi\hbar}\right)^{1/4}
+        e^{-\xi^2/2} H_n(\xi),
+
+    normalized so that :math:`\int |\psi_n(x)|^2 dx = 1`.
 
     Args:
         L (float): The inductance of the inductor in an LC circuit.
         C (float): The capacitance of the capacitor in an LC circuit.
-        n (int): The energy state of the harmonic oscillator.
-        x (float): The value of charge (independent variable) for which the wavefunction is calculated.
+        n (int): The energy state of the harmonic oscillator (any n >= 0).
+        x (float or array): The value of charge (independent variable) for
+            which the wavefunction is calculated.
+        hbar (float): Reduced Planck constant in the units of L, C and x.
+            Defaults to 1 (natural units); pass ``scipy.constants.hbar``
+            for SI values of L, C and x.
 
     Returns:
-        float: Calculated wavefunction
+        float or array: Calculated wavefunction
     """
+    n = int(n)
+    if n < 0:
+        raise ValueError(f"n must be a non-negative integer, got {n}")
+
     # This is the fundamental frequency of the LC circuit
-    omega = (L * C) ** (0.5)
+    omega = 1.0 / sqrt(L * C)
 
-    # For simplicity, let's work in units where hbar=1
-    hbar = 1.0
+    # "mass" * omega / hbar sets the width of the ground state
+    alpha = L * omega / hbar
+    xi = np.sqrt(alpha) * np.asarray(x, dtype=float)
 
-    # these are two terms in the expression for wavefunction which do not depend on charge (x)
-    prefactor = sqrt(1.0 / ((2.0**n) * (factorial(n))))
-    qubic_root = ((L * omega) / (pi * hbar)) ** (0.25)
+    prefactor = 1.0 / sqrt((2.0**n) * factorial(n))
+    quartic_root = (alpha / pi) ** 0.25
 
-    # these are the terms in the expression for the wavefunction which depend on charge (x) and energy state (n)
-    if n == 0:
-        Hermitian_term = (
-            prefactor
-            * qubic_root
-            * (2.71828 ** ((-L * omega * x**2.0) / (2.0 * hbar)))
-            * 1.0
-        )
-    if n == 1:
-        Hermitian_term = (
-            prefactor
-            * qubic_root
-            * (2.71828 ** ((-L * omega * x**2.0) / (2.0 * hbar)))
-            * (2.0 * x)
-        )
-    if n == 2:
-        Hermitian_term = (
-            prefactor
-            * qubic_root
-            * (2.71828 ** ((-L * omega * x**2.0) / (2.0 * hbar)))
-            * (4.0 * x**2.0 - 2.0)
-        )
-    if n == 3:
-        Hermitian_term = (
-            prefactor
-            * qubic_root
-            * (2.71828 ** ((-L * omega * x**2.0) / (2.0 * hbar)))
-            * (8.0 * x**3.0 - 12.0 * x)
-        )
-    if n == 4:
-        Hermitian_term = (
-            prefactor
-            * qubic_root
-            * (2.71828 ** ((-L * omega * x**2.0) / (2.0 * hbar)))
-            * (16.0 * x**4.0 - 48.0 * x**2.0 + 12.0)
-        )
-
-    # the final wavefunction is the product of these terms
-    return (prefactor) * (qubic_root) * (Hermitian_term)
+    return prefactor * quartic_root * np.exp(-(xi**2) / 2.0) * eval_hermite(n, xi)

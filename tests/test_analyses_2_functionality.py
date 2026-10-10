@@ -973,12 +973,13 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
         x_range = np.linspace(-5, 5, 5)
         actual = wavefunction(1.0, 1.0, 0, x_range)
 
+        # pi^(-1/4) exp(-x^2/2): the normalized ground state for L = C = 1.
         expected = [
-            2.10255658e-06,
-            2.47888124e-02,
-            5.64189584e-01,
-            2.47888124e-02,
-            2.10255658e-06,
+            2.79918439e-06,
+            3.30021532e-02,
+            7.51125544e-01,
+            3.30021532e-02,
+            2.79918439e-06,
         ]
 
         self.assertEqual(len(actual), len(expected))

@@ -6,6 +6,12 @@ For the offical user-facing changelog for a particular release can be found in t
 
 The changelog for all releases can be found in the release page: [![Releases](https://img.shields.io/github/release/Qiskit/qiskit-metal.svg?style=popout-square)](https://github.com/Qiskit/qiskit-metal/releases)
 
+## Unreleased
+
+### Fixed
+
+- **`HO_wavefunctions.wavefunction` returns normalized harmonic-oscillator states for any `n`.** It used `omega = sqrt(L*C)` instead of `1/sqrt(L*C)`, did not scale the Hermite-polynomial argument by `sqrt(L*omega/hbar)`, applied the normalization prefactor twice (the norm was 0.564 for `L = C = 1`), and raised `UnboundLocalError` for `n >= 5`. It now uses `scipy.special.eval_hermite`, and a new `hbar` keyword (default 1, as before) allows SI values. (#1202)
+
 ## Quantum Metal v0.9.0 (open-source FEM solver, shape DRC, Python 3.13/3.14 and numpy 2)
 
 Minor release: the gmsh + scikit-fem Maxwell solver and the package-mode
