@@ -378,3 +378,65 @@ class TestMeanderFilletFit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestMeanderLengthReporting(unittest.TestCase):
+    """RouteMeander reports a missed total_length and rejects an impossible
+    one (#1225)."""
+
+    def _build(self, total_length, fillet, spacing):
+        from qiskit_metal import Dict, designs
+        from qiskit_metal.qlibrary.terminations.open_to_ground import OpenToGround
+        from qiskit_metal.qlibrary.terminations.short_to_ground import ShortToGround
+        from qiskit_metal.qlibrary.tlines.meandered import RouteMeander
+
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        d.chips.main.size.size_x = d.chips.main.size.size_y = "5mm"
+        OpenToGround(
+            d, "A", options=dict(pos_x="0.5mm", pos_y="-0.5mm", orientation="180")
+        )
+        ShortToGround(
+            d, "B", options=dict(pos_x="1.6mm", pos_y="1.2mm", orientation="90")
+        )
+        return RouteMeander(
+            d,
+            "R",
+            options=Dict(
+                total_length=total_length,
+                fillet=fillet,
+                lead=Dict(start_straight="150um", end_straight="100um"),
+                meander=Dict(spacing=spacing, asymmetry="0um"),
+                pin_inputs=Dict(
+                    start_pin=Dict(component="A", pin="open"),
+                    end_pin=Dict(component="B", pin="short"),
+                ),
+            ),
+        )
+
+    def test_missed_length_warns(self):
+        with self.assertLogs("metal", level="WARNING") as logs:
+            route = self._build("4.1235mm", "90um", "250um")
+        self.assertGreater(abs(route.length - 4.1235), 1e-3)
+        self.assertTrue(any("differs from total_length" in m for m in logs.output))
+
+    def test_reached_length_no_warning(self):
+        import logging
+
+        logger = logging.getLogger("metal")
+        records = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        logger.addHandler(handler)
+        try:
+            route = self._build("4.1235mm", "60um", "300um")
+        finally:
+            logger.removeHandler(handler)
+        self.assertAlmostEqual(route.length, 4.1235, places=4)
+        self.assertFalse(
+            any("differs from total_length" in r.getMessage() for r in records)
+        )
+
+    def test_too_short_raises(self):
+        with self.assertRaisesRegex(ValueError, "minimum route length"):
+            self._build("1.0mm", "50um", "150um")

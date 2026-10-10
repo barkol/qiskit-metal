@@ -104,6 +104,17 @@ class RouteMeander(QRoute):
             meander_end_point,
         )
 
+        # The meander construction can fall short of total_length (e.g. when
+        # the spacing leaves no room to redistribute the slack); say so.
+        achieved = self.length
+        if abs(achieved - self.p.total_length) > 1e-4:
+            self.logger.warning(
+                f"{self.name}: route length {achieved:.6g} mm differs from "
+                f"total_length={self.p.total_length:.6g} mm by "
+                f"{(achieved - self.p.total_length) * 1e3:+.4g} um. Adjust "
+                "meander.spacing, fillet or the leads to reach the target."
+            )
+
         # Make points into elements
         self.make_elements(self.get_points())
 
@@ -220,6 +231,15 @@ class RouteMeander(QRoute):
 
         # length to distribute on the meanders (excess w.r.t a straight line between start and end)
         length_excess = length_meander - length_direct - 2 * abs(asymmetry)
+        if length_excess < 0:
+            min_length = self.p.total_length - length_excess
+            raise ValueError(
+                f"{self.name}: total_length={self.p.total_length:.6g} mm is shorter "
+                f"than the minimum route length {min_length:.6g} mm between "
+                f"{self.name}.start and {self.name}.end (leads, the direct "
+                f"distance and 2*|meander.asymmetry|). Increase total_length or "
+                "shorten the leads."
+            )
         # how much meander offset from center-line is needed to accommodate the length_excess (perpendicular length)
         length_perp = max(0, length_excess / (meander_number * 2.0))
 
@@ -260,6 +280,12 @@ class RouteMeander(QRoute):
                     "cleanly filleted with the current total_length / spacing / "
                     "fillet combination and will still show sharp kinks."
                 )
+
+        # The fillet reduction above steps by 2 and can reach 0 from an even
+        # count; with a single row the snap alignment below would crash.
+        if meander_number < 1:
+            self.logger.info(f"Zero meanders for {self.name}")
+            return np.empty((0, 2), float)
 
         # USES ROW Vectors
         # const vec. of unit normals
