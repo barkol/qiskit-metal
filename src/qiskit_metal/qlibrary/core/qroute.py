@@ -289,6 +289,17 @@ class QRoute(QComponent):
         # grab the reference component pin
         reference_pin = self._get_connected_pin(options_pin)
 
+        # routes take trace_width from their own options, not from the pin
+        pin_width = reference_pin.get("width")
+        if pin_width is not None and abs(float(pin_width) - self.p.trace_width) > 1e-9:
+            self.logger.warning(
+                f"{self.name}: trace_width={self.p.trace_width:.6g} differs from the "
+                f"width {float(pin_width):.6g} of pin "
+                f"{options_pin.component}.{options_pin.pin} it connects to "
+                f"({name}). Routes do not inherit the pin width; set "
+                "options.trace_width (and trace_gap) to match if intended."
+            )
+
         # create the cpw pin and document the connections to the reference_pin in the netlist
         self.add_pin(name, reference_pin.points[::-1], self.p.trace_width)
         self.design.connect_pins(

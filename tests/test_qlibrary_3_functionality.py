@@ -590,7 +590,9 @@ class TestConnectionPadAddedLater(unittest.TestCase):
 
         d = designs.DesignPlanar()
         d.overwrite_enabled = True
-        q = TransmonPocket(d, "Q1", options=dict(connection_pads=dict(a=dict(loc_W=1, loc_H=1))))
+        q = TransmonPocket(
+            d, "Q1", options=dict(connection_pads=dict(a=dict(loc_W=1, loc_H=1)))
+        )
         q.options.connection_pads.b = Dict(loc_W=-1, loc_H=-1)
         d.rebuild()
         self.assertEqual(q.status, "good")
@@ -601,9 +603,60 @@ class TestConnectionPadAddedLater(unittest.TestCase):
             ref_design,
             "Q1",
             options=dict(
-                connection_pads=dict(a=dict(loc_W=1, loc_H=1), b=dict(loc_W=-1, loc_H=-1))
+                connection_pads=dict(
+                    a=dict(loc_W=1, loc_H=1), b=dict(loc_W=-1, loc_H=-1)
+                )
             ),
         )
         self.assertEqual(q.options.connection_pads.b, ref.options.connection_pads.b)
         for pin in ("a", "b"):
             np.testing.assert_allclose(q.pins[pin].points, ref.pins[pin].points)
+
+
+class TestRouteTraceWidthCheck(unittest.TestCase):
+    """A route narrower or wider than the pins it connects logs a warning
+    (MPK: route_trace_width)."""
+
+    def _build(self, pad_cpw_width):
+        from qiskit_metal import Dict, designs
+        from qiskit_metal.qlibrary.qubits.transmon_pocket import TransmonPocket
+        from qiskit_metal.qlibrary.tlines.straight_path import RouteStraight
+
+        d = designs.DesignPlanar()
+        d.overwrite_enabled = True
+        pads = dict(a=dict(loc_W=1, loc_H=1, cpw_width=pad_cpw_width))
+        TransmonPocket(d, "Q1", options=dict(pos_x="-1mm", connection_pads=pads))
+        TransmonPocket(
+            d, "Q2", options=dict(pos_x="1mm", orientation="180", connection_pads=pads)
+        )
+        return RouteStraight(
+            d,
+            "R",
+            options=Dict(
+                pin_inputs=Dict(
+                    start_pin=Dict(component="Q1", pin="a"),
+                    end_pin=Dict(component="Q2", pin="a"),
+                )
+            ),
+        )
+
+    def test_mismatch_warns(self):
+        with self.assertLogs("metal", level="WARNING") as logs:
+            self._build("20um")
+        hits = [m for m in logs.output if "differs from the width" in m]
+        self.assertEqual(len(hits), 2)
+
+    def test_matching_width_is_silent(self):
+        import logging
+
+        records = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        logging.getLogger("metal").addHandler(handler)
+        try:
+            self._build("cpw_width")
+        finally:
+            logging.getLogger("metal").removeHandler(handler)
+        self.assertFalse(
+            [r for r in records if "differs from the width" in r.getMessage()]
+        )
