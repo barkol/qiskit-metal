@@ -124,7 +124,11 @@ def analyze_loaded_tl(fr, vp, Z0, cap_loading: dict[str, float], shorted=False):
     k = wr / vp
     utl = lambda z: np.cos(k * z + phi)
     utl2 = lambda z: utl(z) ** 2
-    m = 1  # mode number
+    # Mode number of the fundamental: k*L = arctan(...) + m*pi. With a shorted
+    # end (zero loading frequency) the arctan branch already gives the loaded
+    # quarter-wave mode, so m = 0; m = 1 there would be the 3/4-wave mode.
+    # For open/capacitive ends the fundamental is the loaded half-wave, m = 1.
+    m = 0 if 0 in w_loading.values() else 1
 
     w_loading_vals = list(w_loading.values())
 

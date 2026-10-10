@@ -108,3 +108,47 @@ class TestKappaIn(unittest.TestCase):
         for n in (1, 2, 4, 5, 7):
             with self.assertRaises(TypeError):
                 kappa_in(*([1.0] * n))
+
+
+class TestAnalyzeLoadedTLShorted(unittest.TestCase):
+    """analyze_loaded_tl returns the loaded quarter-wave mode for a shorted
+    line (#1206)."""
+
+    fr_mhz = 7000.0
+    vp = 299792458.0 / np.sqrt(6.065)
+    z0 = 51.6
+
+    def test_shorted_length_matches_stub_resonance(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+
+        # Shorted stub of length L in parallel with C resonates when
+        # 1/(w C) = Z0 tan(k L).
+        cap_ff = 54.9
+        w = 2 * np.pi * self.fr_mhz * 1e6
+        k = w / self.vp
+        expected = np.arctan(1 / (w * self.z0 * cap_ff * 1e-15)) / k
+        length = analyze_loaded_tl(
+            self.fr_mhz, self.vp, self.z0, {"Q": cap_ff}, shorted=True
+        )[-1]
+        self.assertAlmostEqual(length / expected, 1.0, places=9)
+        self.assertLess(length, self.vp / (self.fr_mhz * 1e6) / 4)
+
+    def test_weak_loading_limits(self):
+        from qiskit_metal.analyses.quantization.lom_core_analysis import (
+            analyze_loaded_tl,
+        )
+
+        quarter = self.vp / (self.fr_mhz * 1e6) / 4
+        q_open, _, _, l_open = analyze_loaded_tl(
+            self.fr_mhz, self.vp, self.z0, {"Q": 1e-3}, shorted=False
+        )
+        q_short, _, _, l_short = analyze_loaded_tl(
+            self.fr_mhz, self.vp, self.z0, {"Q": 1e-3}, shorted=True
+        )
+        self.assertAlmostEqual(l_open / (2 * quarter), 1.0, places=4)
+        self.assertAlmostEqual(l_short / quarter, 1.0, places=4)
+        # The quarter-wave line stores the same energy in half the length,
+        # so the charge fluctuation at its open end is sqrt(2) larger.
+        self.assertAlmostEqual(q_short["Q"] / q_open["Q"], np.sqrt(2), places=3)
