@@ -25,6 +25,21 @@ from shapely.ops import unary_union
 GROUND_STRIPS = 16
 
 
+def remove_cell(lib: gdstk.Library, cell: gdstk.Cell) -> None:
+    """Remove ``cell`` from ``lib`` together with every reference to it.
+
+    ``gdstk.Library.remove`` only drops the cell; references to it in other
+    cells stay and are written to the GDS file as references to a missing
+    cell. gdspy's ``GdsLibrary.remove`` removed them too
+    (``remove_references=True``), which this restores.
+    """
+    for other in lib.cells:
+        stale = [ref for ref in other.references if ref.cell is cell]
+        if stale:
+            other.remove(*stale)
+    lib.remove(cell)
+
+
 def subtract_in_strips(
     base: list,
     cuts: list,

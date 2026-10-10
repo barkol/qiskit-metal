@@ -486,5 +486,68 @@ class TestCheeseHolesAtKeepoutEdge(unittest.TestCase):
             self.assertAlmostEqual(hole.area / side**2, 1.0, places=6)
 
 
+class TestFabricateNoDanglingReferences(unittest.TestCase):
+    """fabricate=True with cheesing removes cells together with the
+    references to them (#1218)."""
+
+    def test_remove_cell_drops_references(self):
+        from qiskit_metal.renderers.renderer_gds.gds_boolean import remove_cell
+
+        lib = gdstk.Library()
+        child = lib.new_cell("child")
+        child.add(gdstk.rectangle((0, 0), (1, 1)))
+        parent = lib.new_cell("parent")
+        parent.add(gdstk.Reference(child))
+        remove_cell(lib, child)
+        self.assertEqual([c.name for c in lib.cells], ["parent"])
+        self.assertEqual(parent.references, [])
+
+    def test_fabricate_export_has_no_missing_references(self):
+        import warnings
+
+        from qiskit_metal.qlibrary.terminations.open_to_ground import OpenToGround
+        from qiskit_metal.qlibrary.tlines.straight_path import RouteStraight
+
+        design = designs.DesignPlanar()
+        design.chips.main.size.update(size_x="2mm", size_y="2mm")
+        for name, x, orient in (("o1", "-0.5mm", "180"), ("o2", "0.5mm", "0")):
+            OpenToGround(
+                design, name, options=dict(pos_x=x, pos_y="0mm", orientation=orient)
+            )
+        RouteStraight(
+            design,
+            "cpw",
+            options=Dict(
+                pin_inputs=Dict(
+                    start_pin=Dict(component="o1", pin="open"),
+                    end_pin=Dict(component="o2", pin="open"),
+                )
+            ),
+        )
+        design.rebuild()
+        gds = design.renderers.gds
+        gds.options.fabricate = "True"
+        gds.options.cheese.view_in_file = Dict(main={1: True})
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(pathlib.Path(tmp) / "fab.gds")
+            self.assertEqual(gds.export_to_gds(out), 1)
+            names = {c.name for c in gds.lib.cells}
+            dangling = [
+                (c.name, r.cell.name)
+                for c in gds.lib.cells
+                for r in c.references
+                if not isinstance(r.cell, str) and r.cell.name not in names
+            ]
+            self.assertEqual(dangling, [])
+            with warnings.catch_warnings():
+                warnings.simplefilter(
+                    "error"
+                )  # "Missing reference." is a RuntimeWarning
+                lib = gdstk.read_gds(out)
+        top = next(c for c in lib.top_level() if c.name == "TOP")
+        layer1 = {(p.layer, p.datatype) for p in top.get_polygons() if p.layer == 1}
+        self.assertEqual(layer1, {(1, 11), (1, 100)})  # cheesed ground + trace
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

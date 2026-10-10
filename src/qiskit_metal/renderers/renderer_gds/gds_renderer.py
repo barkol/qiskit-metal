@@ -29,7 +29,10 @@ from shapely.geometry import LineString
 
 from qiskit_metal import Dict, config, draw
 from qiskit_metal.renderers.renderer_base import QRenderer
-from qiskit_metal.renderers.renderer_gds.gds_boolean import subtract_in_strips
+from qiskit_metal.renderers.renderer_gds.gds_boolean import (
+    remove_cell,
+    subtract_in_strips,
+)
 from qiskit_metal.renderers.renderer_gds.make_cheese import Cheesing
 from qiskit_metal.toolbox_metal.parsing import is_true
 
@@ -1085,7 +1088,7 @@ class QGDSRenderer(QRenderer):
         if self.lib:
             # Clear old cells from the library
             for c in list(self.lib.cells):
-                self.lib.remove(c)
+                self.lib.remove(c)  # every cell goes; no references remain
 
         # Create a new GDS library file. It can contains multiple cells.
         self.lib = gdstk.Library(
@@ -1427,7 +1430,7 @@ class QGDSRenderer(QRenderer):
                                 ):
                                     chip_only_top.add(gdstk.Reference(no_cheese_cell))
                                 else:
-                                    lib.remove(no_cheese_cell)
+                                    remove_cell(lib, no_cheese_cell)
 
     def _cheese_buffer_maker(
         self, sub_df: geopandas.GeoDataFrame, chip_name: str, no_cheese_buffer: float
@@ -1570,7 +1573,7 @@ class QGDSRenderer(QRenderer):
                 if chip_only_top.bounding_box() is not None:
                     all_chips_top.add(gdstk.Reference(chip_only_top))
                 else:
-                    lib.remove(chip_only_top)
+                    remove_cell(lib, chip_only_top)
 
     def _handle_photo_resist(
         self,
@@ -1757,7 +1760,7 @@ class QGDSRenderer(QRenderer):
         if ground_cell.bounding_box() is not None:
             chip_only_top.add(gdstk.Reference(ground_cell))
         else:
-            lib.remove(ground_cell)
+            remove_cell(lib, ground_cell)
 
     def _get_linestring_characteristics(
         self, row: pd.Series
@@ -2133,17 +2136,17 @@ class QGDSRenderer(QRenderer):
             hold_all_pads_cell (gdstk.Cell): Collect all the jj's with movement.
         """
         hold_name = chip_only_top_layer.name
-        lib.remove(chip_only_top_layer)
+        remove_cell(lib, chip_only_top_layer)
         lib.rename_cell(diff_pad_cell_layer, hold_name)
 
         if diff_pad_cell_layer.bounding_box() is not None:
             chip_only_top.add(gdstk.Reference(diff_pad_cell_layer))
         else:
-            lib.remove(diff_pad_cell_layer)
+            remove_cell(lib, diff_pad_cell_layer)
 
         for ref in list(hold_all_pads_cell.references):
-            lib.remove(ref.cell)
-        lib.remove(hold_all_pads_cell)
+            remove_cell(lib, ref.cell)
+        remove_cell(lib, hold_all_pads_cell)
 
     def _gather_negative_extension_for_jj(
         self,
@@ -2231,7 +2234,7 @@ class QGDSRenderer(QRenderer):
                 gdstk.Reference(temp_cell, origin=center, rotation=rotation)
             )
         else:
-            lib.remove(temp_cell)
+            remove_cell(lib, temp_cell)
 
     def export_to_gds(self, file_name: str, highlight_qcomponents: list = None) -> int:
         """Use the design which was used to initialize this class. The
