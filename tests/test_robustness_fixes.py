@@ -247,7 +247,11 @@ class TestImportKeepsWarnings(unittest.TestCase):
         )
         env = dict(os.environ, QISKIT_METAL_HEADLESS="1")
         proc = subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=300
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("after-import-warning", proc.stderr)
@@ -282,7 +286,9 @@ class TestRunSweepFailure(unittest.TestCase):
                     raise RuntimeError(f"no solver for {gap}")
                 self._variables = Dict(result=gap)
 
-        return Sweeper(_Parent()).run_sweep("Q1", "pad_gap", ["20um", "30um"], ["Q1"], [])
+        return Sweeper(_Parent()).run_sweep(
+            "Q1", "pad_gap", ["20um", "30um"], ["Q1"], []
+        )
 
     def test_all_fail(self):
         sweep, code = self._sweep({"20um", "30um"})
@@ -299,3 +305,22 @@ class TestRunSweepFailure(unittest.TestCase):
         sweep, code = self._sweep(set())
         self.assertEqual(code, 0)
         self.assertNotIn("error", sweep["30um"])
+
+
+class TestSequencingImportMessage(unittest.TestCase):
+    """The LOM pulse-sequence modules name the missing 'sequencing' package
+    (#1231)."""
+
+    def test_import_error_names_package(self):
+        import importlib
+
+        for mod in (
+            "qiskit_metal.analyses.quantization.lom_extensions",
+            "qiskit_metal.analyses.quantization.lom_time_evolution_sim",
+        ):
+            saved = {k: sys.modules.pop(k) for k in list(sys.modules) if k == mod}
+            with unittest.mock.patch.dict(sys.modules, {"sequencing": None}):
+                with self.assertRaisesRegex(ImportError, "pip install sequencing"):
+                    importlib.import_module(mod)
+            sys.modules.pop(mod, None)
+            sys.modules.update(saved)

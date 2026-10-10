@@ -1,4 +1,10 @@
-import sequencing as seq
+try:
+    import sequencing as seq
+except ImportError as _err:  # optional dependency
+    raise ImportError(
+        f"{__name__} requires the 'sequencing' package. "
+        "Install it with: pip install sequencing (not part of any extra)"
+    ) from _err
 import numpy as np
 import scqubits as scq
 from typing import List
