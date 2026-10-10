@@ -52,3 +52,18 @@ class TestHOWavefunction(unittest.TestCase):
         x = np.linspace(-12 * q_zpf, 12 * q_zpf, 20001)
         psi = wavefunction(L, C, 0, x, hbar=hbar)
         self.assertAlmostEqual(trapezoid(psi**2, x), 1.0, places=6)
+
+
+class TestHcpbParamsFromFreqFixEC(unittest.TestCase):
+    """Hcpb.params_from_freq_fixEC inverts fij(0, 1) at fixed Ec (#1203)."""
+
+    def test_recovers_ej(self):
+        from qiskit_metal.analyses.hamiltonian.transmon_charge_basis import Hcpb
+
+        # Tutorial 4.34 numbers (MHz), plus a less transmon-like point.
+        for ej, ec, ng in [(13971.3, 295.2, 0.5), (2500.0, 400.0, 0.0)]:
+            f01 = Hcpb(nlevels=15, Ej=ej, Ec=ec, ng=ng).fij(0, 1)
+            h = Hcpb(nlevels=15, Ej=1.0, Ec=ec, ng=ng)
+            ej_fit = h.params_from_freq_fixEC(f01, ec)
+            self.assertAlmostEqual(ej_fit / ej, 1.0, places=6)
+            self.assertAlmostEqual(h.fij(0, 1), f01, places=4)

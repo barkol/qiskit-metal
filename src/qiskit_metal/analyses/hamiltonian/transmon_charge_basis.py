@@ -300,10 +300,12 @@ class Hcpb:
         def fun(x):
             self.Ej = x[0]
             self.Ec = Ec
-            # the 15 on the anharmonicity allows faster convergnce, see Minev
-            return (self.fij(0, 1) - f01) ** 2 + 15 * (self.anharm() - Ec) ** 2
+            # With Ec fixed, Ej is set by f01 alone; return the residual
+            # (least_squares squares it), not a sum of squares.
+            return [self.fij(0, 1) - f01]
 
-        x0 = [(f01 - Ec) ** 2 / (8 * (Ec))]
+        # Initial guess from f01 ~ sqrt(8*Ej*Ec) - Ec
+        x0 = [(f01 + Ec) ** 2 / (8 * Ec)]
         # can converge slowly if cost function not set up well, or alpha<<freq
         ops = dict(bounds=[(0,), (x0[0] * 3,)], f_scale=1 / x0[0], max_nfev=2000)
         res = opt.least_squares(fun, x0, **{**ops, **kwargs})
