@@ -1169,8 +1169,11 @@ class TestAnalyses(unittest.TestCase, AssertionsMixin):
 
     def test_analysis_kappa_calculation_kappa_in(self):
         """Test the kappa_in function in kappa_calculation.py."""
-        self.assertAlmostEqual(
-            kappa_calculation.kappa_in(5.0e9, 30.0e-15, 4.5e9), 161144.37988054403
+        # kappa/2pi in Hz (#1204); was 2pi^2 times smaller.
+        self.assertAlmostEqualRel(
+            kappa_calculation.kappa_in(5.0e9, 30.0e-15, 4.5e9),
+            6361725.123519329,
+            rel_tol=1e-9,
         )
 
     def test_analysis_sweeper_option_value(self):

@@ -67,3 +67,44 @@ class TestHcpbParamsFromFreqFixEC(unittest.TestCase):
             ej_fit = h.params_from_freq_fixEC(f01, ec)
             self.assertAlmostEqual(ej_fit / ej, 1.0, places=6)
             self.assertAlmostEqual(h.fij(0, 1), f01, places=4)
+
+
+class TestKappaIn(unittest.TestCase):
+    """kappa_calculation.kappa_in uses angular frequencies (#1204)."""
+
+    Z0 = 50.0
+
+    def test_three_args_is_kappa_over_2pi(self):
+        from qiskit_metal.analyses.em.kappa_calculation import kappa_in
+
+        # kappa = (2/pi) w^2 C^2 Z0^2 w_r [rad/s] (Goeppl et al. 2008).
+        f, cap, fr = 7e9, 6.81e-15, 7e9
+        w, wr = 2 * np.pi * f, 2 * np.pi * fr
+        kappa = (2 / np.pi) * w**2 * cap**2 * self.Z0**2 * wr
+        self.assertAlmostEqual(kappa_in(f, cap, fr) / (kappa / (2 * np.pi)), 1.0)
+        # About 1 MHz for this coupler, not 25 kHz.
+        self.assertAlmostEqual(kappa_in(f, cap, fr) / 1e6, 0.99947, places=4)
+
+    def test_six_args_uses_speed_of_light(self):
+        from scipy.constants import c
+        from scipy.special import ellipk
+
+        from qiskit_metal.analyses.em.kappa_calculation import kappa_in
+
+        width, gap, f, cap = 10e-6, 6e-6, 7e9, 6.81e-15
+        k = width / (width + 2 * gap)
+        # eps_eff of the 50 Ohm ideal CPW: Z = 30 pi K(k') / (sqrt(eps) K(k)).
+        sqrt_eps = 30 * np.pi * ellipk(1 - k**2) / (self.Z0 * ellipk(k**2))
+        length = c / (4 * f * sqrt_eps)  # quarter wave at f
+        self.assertGreater(length, 4e-3)
+        self.assertLess(length, 5e-3)
+        self.assertAlmostEqual(
+            kappa_in(f, cap, length, width, gap, 4.0) / kappa_in(f, cap, f), 1.0
+        )
+
+    def test_wrong_argument_count_raises(self):
+        from qiskit_metal.analyses.em.kappa_calculation import kappa_in
+
+        for n in (1, 2, 4, 5, 7):
+            with self.assertRaises(TypeError):
+                kappa_in(*([1.0] * n))
